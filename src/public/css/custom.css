@@ -1,0 +1,202 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --bissu-magenta: #D81B60;
+  --bissu-magenta-hover: #C2185B;
+  --bissu-magenta-light: #FCE4EC;
+  --bissu-black: #0D0E12;
+  --bissu-text-dark: #1E293B;
+  --bissu-bg: #F8FAFC;
+  --bissu-card-bg: rgba(255, 255, 255, 0.92);
+  --bissu-border: #E2E8F0;
+  --bissu-blue: #0284C7;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bissu-bg);
+  color: var(--bissu-text-dark);
+  min-height: 100vh;
+  margin: 0;
+}
+
+.font-brand {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Antigravity Floating Elements & Soft Shadows */
+.antigravity-card {
+  background: var(--bissu-card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05), 0 4px 12px -4px rgba(0, 0, 0, 0.03);
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.antigravity-card:hover {
+  box-shadow: 0 20px 40px -15px rgba(216, 27, 96, 0.08), 0 8px 20px -6px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+}
+
+.antigravity-header {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--bissu-border);
+}
+
+/* Table Hover & Cell Styling */
+.table-container {
+  overflow-x: auto;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04);
+}
+
+.capacity-cell {
+  user-select: none;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  position: relative;
+}
+
+.capacity-cell:hover {
+  transform: scale(1.06);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Status Badges for Cell Values */
+.val-full {
+  background-color: #FCE4EC;
+  color: #880E4F;
+  border: 1px solid #F8BBD0;
+  font-weight: 700;
+}
+
+.val-half {
+  background-color: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+  font-weight: 700;
+}
+
+.val-zero {
+  background-color: #F1F5F9;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+  font-weight: 500;
+}
+
+.val-null {
+  background-color: #FFFFFF;
+  color: #CBD5E1;
+  border: 1px dashed #E2E8F0;
+}
+
+.cell-modified::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  background-color: var(--bissu-magenta);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--bissu-magenta);
+}
+
+/* Sticky Columns */
+.sticky-col-1 {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background-color: #FFFFFF;
+}
+
+.sticky-col-2 {
+  position: sticky;
+  left: 210px;
+  z-index: 20;
+  background-color: #FFFFFF;
+}
+
+.btn-edit-emp {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-edit-emp:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(216, 27, 96, 0.25);
+}
+
+.btn-edit-emp:active {
+  transform: translateY(0);
+}
+
+/* Custom Buttons */
+.btn-bissu {
+  background-color: var(--bissu-magenta);
+  color: #FFFFFF;
+  font-weight: 600;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(216, 27, 96, 0.3);
+}
+
+.btn-bissu:hover {
+  background-color: var(--bissu-magenta-hover);
+  box-shadow: 0 6px 20px rgba(216, 27, 96, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-bissu:active {
+  transform: translateY(0);
+}
+
+/* Toast Notifications */
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toast {
+  padding: 14px 20px;
+  border-radius: 12px;
+  color: white;
+  font-weight: 500;
+  font-size: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideUp 0.3s ease-out;
+}
+
+.toast-success {
+  background-color: #10B981;
+}
+
+.toast-error {
+  background-color: #EF4444;
+}
+
+.toast-info {
+  background-color: var(--bissu-magenta);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

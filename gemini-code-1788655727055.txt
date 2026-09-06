@@ -1,0 +1,138 @@
+Actúa como un Arquitecto de Software Senior, Desarrollador Full-Stack y Diseñador UX/UI. Necesito que generes el proyecto completo, optimizado y liviano para la aplicación web interna "bissú Capacity".
+
+### 1. OBJETIVO DEL PROYECTO
+Crear una aplicación web de gestión de asistencia y capacidad de personal ("Capacity") para las tiendas de la marca "bissú ACCESORIOS".
+El problema a resolver es aislar la edición por tienda: cada tienda solo debe ver y editar el registro de asistencia de sus propios empleados para el mes seleccionado, evitando que alteren datos de otras sedes o rompan la estructura de datos.
+
+---
+
+### 2. STACK TECNOLÓGICO (ULTRA LIGERO Y OPTIMIZADO)
+- Backend: Node.js con Fastify (framework ligero, de alto rendimiento y bajo consumo de RAM).
+- Base de Datos: PostgreSQL (usando cliente nativo 'pg' o 'postgres').
+- Frontend: HTML5 + Tailwind CSS + Alpine.js / Vanilla JS (sin frameworks pesados estilo React/Angular).
+- Autenticación: JWT (JSON Web Tokens) con contraseñas encriptadas con bcrypt/argon2.
+- Despliegue/Nube: Preparado para consumir el mínimo recurso posible en el servidor.
+
+---
+
+### 3. DIRECTRICES DE DISEÑO Y UI/UX (CONCEPTO BISSÚ & ANTIGRAVITY)
+Aplica fielmente la identidad de marca de "bissú ACCESORIOS" en la interfaz con un toque moderno y fluido:
+
+- Marca y Logotipo:
+  * Encabezado con el logo de "bissú ACCESORIOS" (usando tipografía sans-serif geométrica en negro para 'bissú', el acento rosa/magenta en la 'ú', y la palabra 'ACCESORIOS' o 'Capacity' en subtítulo ordenado).
+- Paleta de Colores:
+  * Fondo General: Blanco puro / gris ultra claro (#F9FAFB).
+  * Textos y Encabezados: Negro elegante (#000000 / #111827).
+  * Color de Acento (Brand): Rosa Magenta (#E91E63 o #D81B60) para el acento de la 'ú', estados activos, botones primarios y resaltados.
+  * Colores de Soporte: Azul corporativo limpio para acciones de exportación y grises suaves para bordes de celdas.
+- Estilo Antigravity / UI Flotante:
+  * Tarjetas de información (resumen de capacidad de tienda, totales de personal) con sombras suaves ('shadow-lg', 'backdrop-blur') y bordes redondeados que simulen elevación sobre la superficie.
+  * Celdas de la tabla interactiva de Capacity que al pasar el cursor (hover) o al ser editadas generen un efecto de micro-elevación/levitación ligera (`transform hover:-translate-y-0.5 transition-all`).
+  * Interfaz de tabla limpia, tipo hoja de cálculo pero moderna, intuitiva y responsive.
+
+---
+
+### 4. MODELO DE DATOS (POSTGRESQL)
+Genera el script SQL de migración/inicialización con las siguientes tablas relacionales:
+
+1. `tiendas`
+   - id_tienda (SERIAL PRIMARY KEY)
+   - codigo_almacen (VARCHAR(20), ej. 'ALMA31')
+   - nombre_tienda (VARCHAR(100), ej. 'JESUS MARIA')
+   - correo_tienda (VARCHAR(150) UNIQUE NOT NULL, ej. 'bissujesusmaria@bissu.pe')
+   - encargada (VARCHAR(150))
+   - correo_encargada (VARCHAR(150))
+
+2. `usuarios`
+   - id_usuario (SERIAL PRIMARY KEY)
+   - email (VARCHAR(150) UNIQUE NOT NULL)
+   - password_hash (VARCHAR(255) NOT NULL)
+   - id_tienda (INT NULL, FOREIGN KEY -> tiendas.id_tienda)
+   - rol (VARCHAR(20) CHECK (rol IN ('TIENDA', 'SUPERVISOR', 'RRHH', 'ADMIN')) DEFAULT 'TIENDA')
+
+3. `empleados`
+   - id_empleado (SERIAL PRIMARY KEY)
+   - dni (VARCHAR(15) UNIQUE NOT NULL)
+   - codigo_empleado (VARCHAR(20))
+   - nombre_completo (VARCHAR(150) NOT NULL)
+   - puesto (VARCHAR(100)) -- ej. 'ASESOR DE VENTAS', 'ENCARGADA DE TIENDA'
+   - regimen (VARCHAR(10)) -- 'FT' o 'PT'
+   - id_tienda (INT NOT NULL, FOREIGN KEY -> tiendas.id_tienda)
+   - situacion (VARCHAR(20) DEFAULT 'ACTIVO') -- 'ACTIVO', 'INACTIVO'
+
+4. `capacity_diario`
+   - id_registro (SERIAL PRIMARY KEY)
+   - id_empleado (INT NOT NULL, FOREIGN KEY -> empleados.id_empleado)
+   - fecha (DATE NOT NULL)
+   - valor (NUMERIC(3,2) NOT NULL DEFAULT 0.0) -- Valores: 1.0, 0.5, 0.0
+   - usuario_modificacion (INT, FOREIGN KEY -> usuarios.id_usuario)
+   - fecha_actualizacion (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+   - UNIQUE(id_empleado, fecha)
+
+Incluye un script de Seed Data inicial con datos de ejemplo (tienda JESUS MARIA, usuarios con correo @bissu.pe, empleados y asistencias de prueba para Agosto 2026).
+
+---
+
+### 5. REQUERIMIENTOS Y RUTAS DE BACKEND (FASTIFY)
+Configura un servidor Fastify estructurado modularmente (`/src/routes`, `/src/controllers`, `/src/middleware`):
+
+1. POST `/api/auth/login`
+   - Recibe email y password.
+   - Valida credenciales.
+   - Retorna un JWT conteniendo: `id_usuario`, `email`, `rol`, `id_tienda`.
+
+2. GET `/api/capacity?mes=2026-08`
+   - Requiere autenticación JWT.
+   - SEGURIDAD A NIVEL DE FILA (RLS): Si el rol es 'TIENDA', filtra los empleados/asistencias OBLIGATORIAMENTE por su `id_tienda`. Si es 'ADMIN' o 'SUPERVISOR', permite filtrar por query param de tienda opcional.
+   - Devuelve la lista de empleados de la tienda con la matriz de fechas del mes seleccionado y sus valores diarios.
+
+3. PUT `/api/capacity/bulk-update`
+   - Requiere autenticación JWT.
+   - Recibe un array de cambios: `[{ id_empleado, fecha, valor }]`.
+   - Valida estrictamente en el backend que el usuario solo pueda modificar empleados pertenecientes a su `id_tienda`.
+   - Actualiza o inserta (`UPSERT`) en la tabla `capacity_diario`.
+
+4. GET `/api/capacity/export?mes=2026-08` (Para Power Query / BI)
+   - Endpoint protegido por API Key o Bearer Token.
+   - Devuelve la data desdinamizada y limpia en formato JSON estructurado listo para ser consumido directamente por Power Query sin necesidad de Unpivot manual.
+
+---
+
+### 6. INTERFAZ DE USUARIO Y PANTALLAS (FRONTEND)
+- Pantalla de Login:
+  * Formulario central elevado estilo tarjeta flotante sobre un fondo neutro con el logo de bissú.
+  * Inputs limpios para el correo corporativo (ej. `bissujesusmaria@bissu.pe`) y contraseña.
+- Dashboard Principal:
+  * Barra superior fija con el logo de "bissú Capacity", indicador de usuario conectado y botón de cerrar sesión.
+  * Tarjetas flotantes estilo "antigravity" con métricas rápidas (Total Empleados Activos, Capacity Promedio del Mes, Tienda Actual).
+  * Tabla interactiva tipo Excel: columnas fijas (Empleado, Puesto, Régimen) y columnas dinámicas para los días del mes (1 al 31 de agosto de 2026).
+  * Edición rápida de celdas con selección o clic (valores: 1.0, 0.5, 0.0) con retroalimentación visual al cambiar valores.
+  * Botón destacado en acento magenta "Guardar Cambios" con animación de carga y mensajes emergentes (toast notifications).
+
+---
+
+### 7. ESTRUCTURA DE ARCHIVOS Y SALIDA DESEADA
+Escribe el código fuente completo listo para producción en la siguiente estructura:
+
+├── package.json
+├── .env.example
+├── db/
+│   ├── schema.sql
+│   └── seed.sql
+├── src/
+│   ├── app.js
+│   ├── config/
+│   │   └── db.js
+│   ├── middleware/
+│   │   └── auth.js
+│   ├── routes/
+│   │   ├── auth.js
+│   │   └── capacity.js
+│   └── public/
+│       ├── index.html
+│       ├── login.html
+│       ├── css/
+│       │   └── custom.css
+│       └── js/
+│           └── app.js
+└── README.md (Instrucciones para correr el servidor localmente y configurar la BD en PostgreSQL)
