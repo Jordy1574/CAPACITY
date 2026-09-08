@@ -29,6 +29,9 @@ async function syncToPg() {
 
     // 1. Re-create PostgreSQL Schema
     await client.query(`
+      DROP TABLE IF EXISTS horario_solicitudes CASCADE;
+      DROP TABLE IF EXISTS horario_periodos CASCADE;
+      DROP TABLE IF EXISTS horarios_diario CASCADE;
       DROP TABLE IF EXISTS capacity_diario CASCADE;
       DROP TABLE IF EXISTS empleados CASCADE;
       DROP TABLE IF EXISTS usuarios CASCADE;
@@ -75,6 +78,39 @@ async function syncToPg() {
           fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT unique_empleado_fecha UNIQUE(id_empleado, fecha)
       );
+
+      CREATE TABLE horarios_diario (
+          id_registro SERIAL PRIMARY KEY,
+          id_empleado INT NOT NULL REFERENCES empleados(id_empleado) ON DELETE CASCADE,
+          fecha DATE NOT NULL,
+          valor NUMERIC(3,2) NOT NULL DEFAULT 0.0,
+          usuario_modificacion INT REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+          fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT unique_empleado_fecha_horario UNIQUE(id_empleado, fecha)
+      );
+
+      CREATE TABLE horario_periodos (
+          id_periodo SERIAL PRIMARY KEY,
+          id_tienda INT NOT NULL REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
+          mes VARCHAR(7) NOT NULL,
+          estado VARCHAR(20) NOT NULL CHECK (estado IN ('BORRADOR', 'ENVIADO')) DEFAULT 'BORRADOR',
+          fecha_envio TIMESTAMP NULL,
+          usuario_envio INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+          CONSTRAINT unique_tienda_mes_periodo UNIQUE(id_tienda, mes)
+      );
+
+      CREATE TABLE horario_solicitudes (
+          id_solicitud SERIAL PRIMARY KEY,
+          id_tienda INT NOT NULL REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
+          mes VARCHAR(7) NOT NULL,
+          motivo TEXT NOT NULL,
+          estado VARCHAR(20) NOT NULL CHECK (estado IN ('PENDIENTE', 'APROBADA', 'RECHAZADA')) DEFAULT 'PENDIENTE',
+          solicitado_por INT REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+          fecha_solicitud TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          resuelto_por INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+          fecha_resolucion TIMESTAMP NULL,
+          comentario_resolucion TEXT NULL
+      );
     `);
 
     // 2. Read and Insert Tiendas
@@ -117,6 +153,42 @@ async function syncToPg() {
     }
     await client.query(`SELECT setval('capacity_diario_id_registro_seq', (SELECT MAX(id_registro) FROM capacity_diario))`);
 
+    // 6. Read and Insert Horarios Diario
+    const horarios = await new Promise((res, rej) => sqliteDb.all("SELECT * FROM horarios_diario ORDER BY id_registro ASC", (e, r) => e ? rej(e) : res(r)));
+    for (const h of horarios) {
+      await client.query(`
+        INSERT INTO horarios_diario (id_registro, id_empleado, fecha, valor, usuario_modificacion)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [h.id_registro, h.id_empleado, h.fecha, h.valor, h.usuario_modificacion]);
+    }
+    if (horarios.length > 0) {
+      await client.query(`SELECT setval('horarios_diario_id_registro_seq', (SELECT MAX(id_registro) FROM horarios_diario))`);
+    }
+
+    // 7. Read and Insert Horario Periodos
+    const periodos = await new Promise((res, rej) => sqliteDb.all("SELECT * FROM horario_periodos ORDER BY id_periodo ASC", (e, r) => e ? rej(e) : res(r)));
+    for (const p of periodos) {
+      await client.query(`
+        INSERT INTO horario_periodos (id_periodo, id_tienda, mes, estado, fecha_envio, usuario_envio)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [p.id_periodo, p.id_tienda, p.mes, p.estado, p.fecha_envio, p.usuario_envio]);
+    }
+    if (periodos.length > 0) {
+      await client.query(`SELECT setval('horario_periodos_id_periodo_seq', (SELECT MAX(id_periodo) FROM horario_periodos))`);
+    }
+
+    // 8. Read and Insert Horario Solicitudes
+    const solicitudes = await new Promise((res, rej) => sqliteDb.all("SELECT * FROM horario_solicitudes ORDER BY id_solicitud ASC", (e, r) => e ? rej(e) : res(r)));
+    for (const s of solicitudes) {
+      await client.query(`
+        INSERT INTO horario_solicitudes (id_solicitud, id_tienda, mes, motivo, estado, solicitado_por, fecha_solicitud, resuelto_por, fecha_resolucion, comentario_resolucion)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `, [s.id_solicitud, s.id_tienda, s.mes, s.motivo, s.estado, s.solicitado_por, s.fecha_solicitud, s.resuelto_por, s.fecha_resolucion, s.comentario_resolucion]);
+    }
+    if (solicitudes.length > 0) {
+      await client.query(`SELECT setval('horario_solicitudes_id_solicitud_seq', (SELECT MAX(id_solicitud) FROM horario_solicitudes))`);
+    }
+
     await client.query('COMMIT');
 
     console.log('[PG SYNC] Successfully synced all data to PostgreSQL!');
@@ -124,6 +196,9 @@ async function syncToPg() {
     console.log(`  - Usuarios: ${users.length}`);
     console.log(`  - Empleados: ${emps.length}`);
     console.log(`  - Registros Asistencia: ${records.length}`);
+    console.log(`  - Registros Horarios: ${horarios.length}`);
+    console.log(`  - Periodos de Horario: ${periodos.length}`);
+    console.log(`  - Solicitudes de Horario: ${solicitudes.length}`);
 
   } catch (err) {
     await client.query('ROLLBACK');

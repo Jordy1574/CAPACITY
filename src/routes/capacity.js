@@ -1,5 +1,7 @@
 const { query, dbDriver } = require('../config/db');
 const { authenticate, authenticateExport } = require('../middleware/auth');
+const { getDaysInMonth } = require('../utils/dates');
+const { getActiveEmpleados } = require('../utils/empleados');
 
 async function capacityRoutes(fastify, options) {
   
@@ -48,34 +50,7 @@ async function capacityRoutes(fastify, options) {
       const tienda = tiendas[0];
 
       // GESTIÓN DE ALTA ROTACIÓN Y FILTRADO POR MES:
-      // Mostrar empleados ACTIVOS + empleados INACTIVOS cuya fecha_baja sea en el mes actual o posterior
-      const empSql = `
-        SELECT 
-          id_empleado, 
-          dni, 
-          codigo_empleado, 
-          nombre_completo, 
-          puesto, 
-          regimen, 
-          celular, 
-          correo_asesor, 
-          situacion, 
-          CAST(fecha_baja AS TEXT) AS fecha_baja, 
-          id_tienda 
-        FROM empleados 
-        WHERE id_tienda = $1 
-          AND (
-            situacion = 'ACTIVO' 
-            OR (situacion = 'INACTIVO' AND (fecha_baja IS NULL OR CAST(fecha_baja AS TEXT) >= $2))
-          )
-        ORDER BY 
-          CASE WHEN situacion = 'ACTIVO' THEN 1 ELSE 2 END ASC,
-          CASE WHEN codigo_empleado IS NULL THEN 1 ELSE 0 END ASC,
-          codigo_empleado ASC,
-          nombre_completo ASC
-      `;
-
-      const empleados = await query(empSql, [idTienda, firstDayOfMonth]);
+      const empleados = await getActiveEmpleados(idTienda, firstDayOfMonth);
 
       if (empleados.length === 0) {
         return reply.send({
@@ -391,20 +366,6 @@ async function capacityRoutes(fastify, options) {
       return reply.status(500).send({ error: 'Error al exportar datos para Power Query.' });
     }
   });
-}
-
-function getDaysInMonth(yearMonthStr) {
-  const [year, month] = yearMonthStr.split('-').map(Number);
-  const date = new Date(year, month - 1, 1);
-  const days = [];
-  while (date.getMonth() === month - 1) {
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    days.push(`${yyyy}-${mm}-${dd}`);
-    date.setDate(date.getDate() + 1);
-  }
-  return days;
 }
 
 module.exports = capacityRoutes;

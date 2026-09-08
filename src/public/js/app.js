@@ -5,6 +5,14 @@ let currentStoreId = null;
 let currentCapacityData = null;
 let pendingChanges = {}; // Clave: `${id_empleado}_${fecha}` => { id_empleado, fecha, valor }
 
+// Estado Global de Horarios
+let currentHorarioMonth = '2026-09';
+let currentHorarioStoreId = null;
+let currentHorarioData = null;
+let pendingHorarioChanges = {};
+let horariosLoaded = false;
+
+const ROLES_ADMIN = ['ADMIN', 'SUPERVISOR', 'RRHH'];
 const API_KEY_EXPORT = 'bissu_power_query_key_98765';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -28,11 +36,29 @@ function initApp() {
   if (monthPicker) {
     monthPicker.value = currentMonth;
   }
+  const horarioMonthPicker = document.getElementById('horario-month-picker');
+  if (horarioMonthPicker) {
+    horarioMonthPicker.value = currentHorarioMonth;
+  }
 
   // Event listener para el formulario de colaborador
   const empForm = document.getElementById('employee-form');
   if (empForm) {
     empForm.addEventListener('submit', handleEmployeeSubmit);
+  }
+
+  // Event listener para el formulario de solicitud de permiso
+  const solicitudForm = document.getElementById('solicitar-permiso-form');
+  if (solicitudForm) {
+    solicitudForm.addEventListener('submit', handleSolicitudSubmit);
+  }
+
+  if (ROLES_ADMIN.includes(currentUser.rol)) {
+    const btnSolicitudes = document.getElementById('btn-solicitudes-panel');
+    if (btnSolicitudes) {
+      btnSolicitudes.classList.remove('hidden');
+      btnSolicitudes.classList.add('inline-flex');
+    }
   }
 
   // Configurar selector de tienda si es Admin/Supervisor/RRHH
@@ -606,4 +632,525 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// ============================================================
+// MÓDULO DE HORARIOS
+// ============================================================
+
+function switchView(view) {
+  const viewCapacity = document.getElementById('view-capacity');
+  const viewHorarios = document.getElementById('view-horarios');
+  const tabCapacity = document.getElementById('tab-btn-capacity');
+  const tabHorarios = document.getElementById('tab-btn-horarios');
+
+  if (view === 'horarios') {
+    viewCapacity.classList.add('hidden');
+    viewHorarios.classList.remove('hidden');
+    tabHorarios.classList.add('tab-btn-active');
+    tabCapacity.classList.remove('tab-btn-active');
+
+    if (!horariosLoaded) {
+      horariosLoaded = true;
+      if (ROLES_ADMIN.includes(currentUser.rol)) {
+        setupHorarioStoreSelector();
+      } else {
+        currentHorarioStoreId = currentUser.id_tienda;
+        loadHorarioData();
+      }
+    }
+  } else {
+    viewHorarios.classList.add('hidden');
+    viewCapacity.classList.remove('hidden');
+    tabCapacity.classList.add('tab-btn-active');
+    tabHorarios.classList.remove('tab-btn-active');
+  }
+}
+
+async function setupHorarioStoreSelector() {
+  const container = document.getElementById('horario-store-selector-container');
+  const select = document.getElementById('horario-store-select');
+  if (!container || !select) return;
+
+  container.classList.remove('hidden');
+  container.classList.add('flex');
+
+  try {
+    const res = await fetchWithAuth('/api/tiendas');
+    if (res.ok) {
+      const data = await res.json();
+      select.innerHTML = '';
+      data.tiendas.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id_tienda;
+        opt.textContent = `${t.nombre_tienda} (${t.codigo_almacen})`;
+        select.appendChild(opt);
+      });
+
+      currentHorarioStoreId = currentUser.id_tienda || data.tiendas[0]?.id_tienda || 1;
+      select.value = currentHorarioStoreId;
+      loadHorarioData();
+    }
+  } catch (err) {
+    console.error('Error al cargar lista de tiendas', err);
+    currentHorarioStoreId = 1;
+    loadHorarioData();
+  }
+}
+
+function changeHorarioMonth(offset) {
+  const picker = document.getElementById('horario-month-picker');
+  if (!picker) return;
+
+  const [year, month] = picker.value.split('-').map(Number);
+  const newDate = new Date(year, month - 1 + offset, 1);
+  const yyyy = newDate.getFullYear();
+  const mm = String(newDate.getMonth() + 1).padStart(2, '0');
+
+  picker.value = `${yyyy}-${mm}`;
+  loadHorarioData();
+}
+
+async function loadHorarioData() {
+  const monthPicker = document.getElementById('horario-month-picker');
+  const storeSelect = document.getElementById('horario-store-select');
+
+  if (monthPicker) currentHorarioMonth = monthPicker.value;
+  if (storeSelect && ROLES_ADMIN.includes(currentUser.rol)) {
+    currentHorarioStoreId = storeSelect.value;
+  }
+
+  pendingHorarioChanges = {};
+  updateHorarioSaveBar();
+
+  try {
+    const url = `/api/horarios?mes=${currentHorarioMonth}&id_tienda=${currentHorarioStoreId || 1}`;
+    const res = await fetchWithAuth(url);
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Error al obtener el horario');
+    }
+
+    const data = await res.json();
+    currentHorarioData = data;
+
+    renderHorarioEstadoUI(data);
+    renderHorarioTable(data);
+
+    if (ROLES_ADMIN.includes(currentUser.rol)) {
+      refreshSolicitudesCount();
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+    console.error(err);
+  }
+}
+
+function isHorarioLocked(data) {
+  return currentUser.rol === 'TIENDA' && data?.periodo?.estado === 'ENVIADO';
+}
+
+function renderHorarioEstadoUI(data) {
+  const badge = document.getElementById('horario-estado-badge');
+  const btnEnviar = document.getElementById('btn-enviar-horario');
+  const btnSolicitar = document.getElementById('btn-solicitar-permiso');
+
+  const estado = data.periodo?.estado || 'BORRADOR';
+  const solicitud = data.solicitud_pendiente;
+
+  if (badge) {
+    if (solicitud) {
+      badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border bg-amber-50 text-amber-700 border-amber-300';
+      badge.textContent = '⏳ Solicitud de permiso pendiente';
+    } else if (estado === 'ENVIADO') {
+      badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border bg-gray-900 text-white border-gray-900';
+      badge.textContent = '🔒 Enviado — Bloqueado';
+    } else {
+      badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border bg-blue-50 text-blue-700 border-blue-200';
+      badge.textContent = '📝 Borrador — Editable';
+    }
+  }
+
+  if (btnEnviar) {
+    const showEnviar = estado === 'BORRADOR' && (data.empleados || []).length > 0;
+    btnEnviar.classList.toggle('hidden', !showEnviar);
+    btnEnviar.classList.toggle('flex', showEnviar);
+  }
+
+  if (btnSolicitar) {
+    const showSolicitar = currentUser.rol === 'TIENDA' && estado === 'ENVIADO' && !solicitud;
+    btnSolicitar.classList.toggle('hidden', !showSolicitar);
+    btnSolicitar.classList.toggle('flex', showSolicitar);
+  }
+}
+
+function renderHorarioTable(data) {
+  const headerRow = document.getElementById('horario-table-header-row');
+  const tbody = document.getElementById('horario-table-body');
+  if (!headerRow || !tbody) return;
+
+  headerRow.innerHTML = `
+    <th class="p-3 sticky-col-1 border-b border-gray-200 min-w-[210px] bg-gray-50">Colaborador</th>
+    <th class="p-3 sticky-col-2 border-b border-gray-200 min-w-[110px] bg-gray-50 text-center">Código Asesor</th>
+    <th class="p-3 border-b border-gray-200 min-w-[140px] bg-gray-50">Puesto</th>
+    <th class="p-3 border-b border-gray-200 min-w-[80px] text-center bg-gray-50">Régimen</th>
+  `;
+
+  const days = data.dias_mes || [];
+  days.forEach(dayStr => {
+    const dayNum = dayStr.split('-')[2];
+    const dateObj = new Date(dayStr + 'T00:00:00');
+    const dayName = dateObj.toLocaleDateString('es-ES', { weekday: 'narrow' }).toUpperCase();
+    const isWeekend = [0, 6].includes(dateObj.getDay());
+
+    const th = document.createElement('th');
+    th.className = `p-2 border-b border-gray-200 text-center min-w-[44px] ${isWeekend ? 'bg-pink-50/50 text-[#D81B60]' : 'bg-gray-50'}`;
+    th.innerHTML = `
+      <div class="text-[10px] opacity-60 font-semibold">${dayName}</div>
+      <div class="text-xs font-bold">${dayNum}</div>
+    `;
+    headerRow.appendChild(th);
+  });
+
+  const isLocked = isHorarioLocked(data);
+
+  tbody.innerHTML = '';
+  if (!data.empleados || data.empleados.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="${days.length + 4}" class="text-center py-10 text-gray-400 font-medium">
+          No hay colaboradores registrados en esta tienda para el mes seleccionado.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  data.empleados.forEach(emp => {
+    const tr = document.createElement('tr');
+    const isInactive = emp.situacion === 'INACTIVO';
+    tr.className = `hover:bg-gray-50/80 transition-colors ${isInactive ? 'bg-red-50/30' : ''}`;
+
+    const tdEmp = document.createElement('td');
+    tdEmp.className = 'p-3 sticky-col-1 border-b border-gray-100 font-medium text-gray-900 bg-white';
+    tdEmp.innerHTML = `
+      <div>
+        <div class="font-bold text-xs ${isInactive ? 'text-red-700 line-through' : 'text-gray-900'}">
+          ${escapeHtml(emp.nombre_completo)}
+          ${isInactive ? '<span class="ml-1 text-[9px] px-1 bg-red-100 text-red-800 rounded font-normal no-underline">INACTIVO</span>' : ''}
+        </div>
+        <div class="text-[10px] text-gray-400 font-mono">DNI: ${escapeHtml(emp.dni)}</div>
+      </div>
+    `;
+    tr.appendChild(tdEmp);
+
+    const tdCodigo = document.createElement('td');
+    tdCodigo.className = 'p-3 sticky-col-2 border-b border-gray-100 text-center bg-white';
+    tdCodigo.innerHTML = emp.codigo_empleado
+      ? `<span class="px-2.5 py-1 bg-gray-900 text-white text-[11px] font-mono font-bold rounded-lg shadow-xs border border-gray-800">${escapeHtml(emp.codigo_empleado)}</span>`
+      : `<span class="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold rounded-lg">EN PRUEBA</span>`;
+    tr.appendChild(tdCodigo);
+
+    const tdPuesto = document.createElement('td');
+    tdPuesto.className = 'p-3 border-b border-gray-100 text-gray-700 text-xs font-semibold';
+    tdPuesto.textContent = emp.puesto || 'ASESOR DE VENTAS';
+    tr.appendChild(tdPuesto);
+
+    const tdRegimen = document.createElement('td');
+    tdRegimen.className = 'p-3 border-b border-gray-100 text-center';
+    tdRegimen.innerHTML = `<span class="px-2 py-0.5 text-[10px] font-bold rounded-lg ${emp.regimen === 'FT' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-purple-50 text-purple-700 border border-purple-200'}">${emp.regimen || 'FT'}</span>`;
+    tr.appendChild(tdRegimen);
+
+    days.forEach(dayStr => {
+      const tdDay = document.createElement('td');
+      tdDay.className = 'p-1 border-b border-gray-100 text-center align-middle';
+
+      const val = emp.dias[dayStr];
+      const key = `${emp.id_empleado}_${dayStr}`;
+      const isPending = pendingHorarioChanges[key] !== undefined;
+      const currentVal = isPending ? pendingHorarioChanges[key].valor : val;
+
+      const badge = document.createElement('div');
+      const lockedClasses = isLocked ? 'opacity-60 cursor-not-allowed' : '';
+      badge.className = `capacity-cell h-8 w-8 mx-auto rounded-lg flex items-center justify-center text-xs ${getBadgeClass(currentVal)} ${isPending ? 'cell-modified' : ''} ${lockedClasses}`;
+      badge.textContent = currentVal !== null && currentVal !== undefined ? Number(currentVal).toFixed(1) : '-';
+
+      if (!isLocked) {
+        badge.onclick = () => cycleHorarioCellValue(emp.id_empleado, dayStr, val, badge, emp.regimen);
+      }
+
+      tdDay.appendChild(badge);
+      tr.appendChild(tdDay);
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function cycleHorarioCellValue(idEmpleado, fecha, initialVal, badgeEl, regimen = 'FT') {
+  const key = `${idEmpleado}_${fecha}`;
+  const isPending = pendingHorarioChanges[key] !== undefined;
+  const rawVal = isPending ? pendingHorarioChanges[key].valor : initialVal;
+  const currentVal = (rawVal !== null && rawVal !== undefined) ? Number(rawVal) : null;
+
+  const isPT = (regimen === 'PT');
+  let nextVal;
+
+  if (currentVal === null) {
+    nextVal = isPT ? 0.5 : 1.0;
+  } else if (isPT) {
+    if (currentVal === 0.5) nextVal = 0.0;
+    else if (currentVal === 0.0) nextVal = 1.0;
+    else nextVal = null;
+  } else {
+    if (currentVal === 1.0) nextVal = 0.0;
+    else if (currentVal === 0.0) nextVal = 0.5;
+    else nextVal = null;
+  }
+
+  pendingHorarioChanges[key] = { id_empleado: idEmpleado, fecha, valor: nextVal };
+
+  badgeEl.className = `capacity-cell h-8 w-8 mx-auto rounded-lg flex items-center justify-center text-xs ${getBadgeClass(nextVal)} cell-modified`;
+  badgeEl.textContent = nextVal !== null ? nextVal.toFixed(1) : '-';
+
+  updateHorarioSaveBar();
+}
+
+function updateHorarioSaveBar() {
+  const saveBar = document.getElementById('horario-save-bar');
+  const countEl = document.getElementById('horario-pending-changes-count');
+  const keys = Object.keys(pendingHorarioChanges);
+
+  if (!saveBar || !countEl) return;
+
+  if (keys.length > 0) {
+    countEl.textContent = `${keys.length} cambio${keys.length > 1 ? 's' : ''} pendiente${keys.length > 1 ? 's' : ''}`;
+    saveBar.classList.remove('translate-y-24', 'opacity-0');
+    saveBar.classList.add('translate-y-0', 'opacity-100');
+  } else {
+    saveBar.classList.add('translate-y-24', 'opacity-0');
+    saveBar.classList.remove('translate-y-0', 'opacity-100');
+  }
+}
+
+function discardHorarioChanges() {
+  pendingHorarioChanges = {};
+  if (currentHorarioData) {
+    renderHorarioTable(currentHorarioData);
+  }
+  updateHorarioSaveBar();
+  showToast('Cambios descartados.', 'info');
+}
+
+async function saveHorarioChanges() {
+  const btn = document.getElementById('btn-save-horario-changes');
+  const cambiosArray = Object.values(pendingHorarioChanges);
+  if (cambiosArray.length === 0) return;
+
+  btn.disabled = true;
+
+  try {
+    const res = await fetchWithAuth('/api/horarios/bulk-update', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cambios: cambiosArray })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al guardar');
+
+    showToast('¡Horario guardado con éxito!', 'success');
+    pendingHorarioChanges = {};
+    updateHorarioSaveBar();
+    loadHorarioData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function enviarHorario() {
+  if (!confirm('¿Enviar el horario de este mes? Una vez enviado no podrás editarlo salvo que se apruebe una solicitud de permiso.')) {
+    return;
+  }
+
+  try {
+    const res = await fetchWithAuth('/api/horarios/enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes: currentHorarioMonth, id_tienda: currentHorarioStoreId })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al enviar el horario');
+
+    showToast(data.message || 'Horario enviado.', 'success');
+    loadHorarioData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function openSolicitarPermisoModal() {
+  const modal = document.getElementById('solicitar-permiso-modal');
+  const textarea = document.getElementById('solicitud-motivo');
+  if (textarea) textarea.value = '';
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+}
+
+function closeSolicitarPermisoModal() {
+  const modal = document.getElementById('solicitar-permiso-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+async function handleSolicitudSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-save-solicitud');
+  const motivo = document.getElementById('solicitud-motivo').value.trim();
+
+  btn.disabled = true;
+  try {
+    const res = await fetchWithAuth('/api/horarios/solicitar-permiso', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes: currentHorarioMonth, id_tienda: currentHorarioStoreId, motivo })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al enviar la solicitud');
+
+    showToast(data.message || 'Solicitud enviada.', 'success');
+    closeSolicitarPermisoModal();
+    loadHorarioData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function refreshSolicitudesCount() {
+  try {
+    const res = await fetchWithAuth('/api/horarios/solicitudes?estado=PENDIENTE');
+    if (!res.ok) return;
+    const data = await res.json();
+    const countEl = document.getElementById('solicitudes-pendientes-count');
+    if (!countEl) return;
+    const count = (data.solicitudes || []).length;
+    countEl.textContent = count;
+    countEl.classList.toggle('hidden', count === 0);
+  } catch (err) {
+    console.error('Error al consultar solicitudes pendientes', err);
+  }
+}
+
+function openSolicitudesModal() {
+  const modal = document.getElementById('solicitudes-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+  loadSolicitudesList();
+}
+
+function closeSolicitudesModal() {
+  const modal = document.getElementById('solicitudes-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+async function loadSolicitudesList() {
+  const container = document.getElementById('solicitudes-list');
+  if (!container) return;
+  container.innerHTML = '<p class="text-center text-xs text-gray-400 py-8">Cargando solicitudes...</p>';
+
+  try {
+    const res = await fetchWithAuth('/api/horarios/solicitudes');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al cargar solicitudes');
+
+    renderSolicitudesList(data.solicitudes || []);
+  } catch (err) {
+    container.innerHTML = `<p class="text-center text-xs text-red-500 py-8">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderSolicitudesList(solicitudes) {
+  const container = document.getElementById('solicitudes-list');
+  if (!container) return;
+
+  if (solicitudes.length === 0) {
+    container.innerHTML = '<p class="text-center text-xs text-gray-400 py-8">No hay solicitudes registradas.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+  solicitudes.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'p-4 border border-gray-200 rounded-xl space-y-2';
+
+    const estadoColors = {
+      PENDIENTE: 'bg-amber-50 text-amber-700 border-amber-200',
+      APROBADA: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      RECHAZADA: 'bg-red-50 text-red-700 border-red-200'
+    };
+
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-bold text-gray-900">${escapeHtml(s.nombre_tienda)} (${escapeHtml(s.codigo_almacen)}) — ${escapeHtml(s.mes)}</p>
+          <p class="text-[10px] text-gray-400">Solicitado por ${escapeHtml(s.solicitado_por_email || '—')} el ${new Date(s.fecha_solicitud).toLocaleString('es-PE')}</p>
+        </div>
+        <span class="px-2 py-0.5 text-[10px] font-bold rounded-lg border ${estadoColors[s.estado] || ''}">${escapeHtml(s.estado)}</span>
+      </div>
+      <p class="text-xs text-gray-700 bg-gray-50 p-2.5 rounded-lg">${escapeHtml(s.motivo)}</p>
+      ${s.estado === 'PENDIENTE' ? `
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button data-action="rechazar" data-id="${s.id_solicitud}" class="px-3 py-1.5 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg">Rechazar</button>
+          <button data-action="aprobar" data-id="${s.id_solicitud}" class="px-3 py-1.5 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg">Aprobar</button>
+        </div>
+      ` : (s.comentario_resolucion ? `<p class="text-[10px] text-gray-400 italic">Comentario: ${escapeHtml(s.comentario_resolucion)}</p>` : '')}
+    `;
+
+    const btnAprobar = card.querySelector('[data-action="aprobar"]');
+    const btnRechazar = card.querySelector('[data-action="rechazar"]');
+    if (btnAprobar) btnAprobar.onclick = () => resolverSolicitud(s.id_solicitud, true);
+    if (btnRechazar) btnRechazar.onclick = () => resolverSolicitud(s.id_solicitud, false);
+
+    container.appendChild(card);
+  });
+}
+
+async function resolverSolicitud(idSolicitud, aprobar) {
+  const comentario = aprobar
+    ? ''
+    : (prompt('Motivo del rechazo (opcional):') || '');
+
+  try {
+    const res = await fetchWithAuth(`/api/horarios/solicitudes/${idSolicitud}/resolver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aprobar, comentario })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al resolver la solicitud');
+
+    showToast(data.message, 'success');
+    loadSolicitudesList();
+    refreshSolicitudesCount();
+    if (currentHorarioData) loadHorarioData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }

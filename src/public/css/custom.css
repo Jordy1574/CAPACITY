@@ -134,6 +134,22 @@ body {
   transform: translateY(0);
 }
 
+/* Tab Navigation */
+.tab-btn {
+  color: #64748B;
+  background: transparent;
+}
+
+.tab-btn:hover {
+  color: #1E293B;
+}
+
+.tab-btn-active {
+  background-color: #FFFFFF;
+  color: var(--bissu-black);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
 /* Custom Buttons */
 .btn-bissu {
   background-color: var(--bissu-magenta);

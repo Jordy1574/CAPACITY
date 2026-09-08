@@ -1,5 +1,8 @@
 -- Script de Migración PostgreSQL para bissú Capacity (Actualizado)
 
+DROP TABLE IF EXISTS horario_solicitudes CASCADE;
+DROP TABLE IF EXISTS horario_periodos CASCADE;
+DROP TABLE IF EXISTS horarios_diario CASCADE;
 DROP TABLE IF EXISTS capacity_diario CASCADE;
 DROP TABLE IF EXISTS empleados CASCADE;
 DROP TABLE IF EXISTS usuarios CASCADE;
@@ -45,4 +48,44 @@ CREATE TABLE capacity_diario (
     usuario_modificacion INT REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_empleado_fecha UNIQUE(id_empleado, fecha)
+);
+
+-- Módulo de Horarios: planificación separada de Capacity, con flujo de
+-- envío/bloqueo y solicitud de permiso para reabrir un horario ya enviado.
+
+CREATE TABLE horarios_diario (
+    id_registro SERIAL PRIMARY KEY,
+    id_empleado INT NOT NULL REFERENCES empleados(id_empleado) ON DELETE CASCADE,
+    fecha DATE NOT NULL,
+    valor NUMERIC(3,2) NOT NULL DEFAULT 0.0,
+    usuario_modificacion INT REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_empleado_fecha_horario UNIQUE(id_empleado, fecha)
+);
+
+-- Estado de envío del horario por tienda y mes: BORRADOR (editable) o
+-- ENVIADO (bloqueado hasta que se otorgue permiso de modificación).
+CREATE TABLE horario_periodos (
+    id_periodo SERIAL PRIMARY KEY,
+    id_tienda INT NOT NULL REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
+    mes VARCHAR(7) NOT NULL, -- 'YYYY-MM'
+    estado VARCHAR(20) NOT NULL CHECK (estado IN ('BORRADOR', 'ENVIADO')) DEFAULT 'BORRADOR',
+    fecha_envio TIMESTAMP NULL,
+    usuario_envio INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    CONSTRAINT unique_tienda_mes_periodo UNIQUE(id_tienda, mes)
+);
+
+-- Solicitudes de la tienda para reabrir un horario ya enviado (ej. emergencia
+-- de personal que descuadra el horario). Al aprobarse, el periodo vuelve a BORRADOR.
+CREATE TABLE horario_solicitudes (
+    id_solicitud SERIAL PRIMARY KEY,
+    id_tienda INT NOT NULL REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
+    mes VARCHAR(7) NOT NULL,
+    motivo TEXT NOT NULL,
+    estado VARCHAR(20) NOT NULL CHECK (estado IN ('PENDIENTE', 'APROBADA', 'RECHAZADA')) DEFAULT 'PENDIENTE',
+    solicitado_por INT REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    fecha_solicitud TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resuelto_por INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    fecha_resolucion TIMESTAMP NULL,
+    comentario_resolucion TEXT NULL
 );

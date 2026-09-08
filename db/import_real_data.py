@@ -3,6 +3,7 @@ import sqlite3
 import os
 import re
 import datetime
+from collections import Counter
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'capacity.db')
 
@@ -54,6 +55,17 @@ def clean_code(val):
     if s.isdigit():
         return s.zfill(4)
     return s if s != '' else None
+
+def compute_rango_codigos(codes):
+    """Cada tienda tiene un bloque de 10 plazas que empieza en un múltiplo de 10
+    (ej. 0160-0169, 0300-0309). Se elige la década con más códigos asignados
+    para descartar códigos atípicos (ej. '7777', '8887', '0000') que no
+    pertenecen a la numeración secuencial real de la tienda."""
+    if not codes:
+        return "0100-0109"
+    decades = Counter((int(c) // 10) * 10 for c in codes)
+    best_decade = max(sorted(decades), key=lambda d: decades[d])
+    return f"{best_decade:04d}-{best_decade + 9:04d}"
 
 def parse_excel_data():
     base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -149,9 +161,9 @@ def parse_excel_data():
             if isinstance(fecha_cese, (datetime.datetime, datetime.date)):
                 fecha_baja_str = fecha_cese.strftime('%Y-%m-%d')
 
-            final_dni = dni or f"DNI{emp_key:04d}"
-            
             emp_key = len(employees) + 1
+            final_dni = dni or f"DNI{emp_key:04d}"
+
             emp_obj = {
                 'key': emp_key,
                 'dni': final_dni,
@@ -246,7 +258,7 @@ def import_to_db():
     store_id_map = {}
     for t_name, s_info in stores.items():
         cods = sorted([c for c in s_info['codigos'] if c.isdigit()])
-        rango = f"{cods[0]}-{cods[-1]}" if cods else "0100-0109"
+        rango = compute_rango_codigos(cods)
 
         cur.execute("""
             INSERT INTO tiendas (codigo_almacen, nombre_tienda, rango_codigos, correo_tienda, encargada, correo_encargada)

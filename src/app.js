@@ -30,6 +30,7 @@ fastify.register(require('@fastify/static'), {
 // Registrar rutas
 fastify.register(require('./routes/auth'));
 fastify.register(require('./routes/capacity'));
+fastify.register(require('./routes/horarios'));
 
 // Ruta raíz sirve index.html
 fastify.get('/', async (request, reply) => {

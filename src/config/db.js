@@ -96,6 +96,52 @@ function initSqliteSchemaAndSeed() {
       );
     `);
 
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS horarios_diario (
+        id_registro INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_empleado INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        valor REAL NOT NULL DEFAULT 0.0,
+        usuario_modificacion INTEGER,
+        fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(id_empleado, fecha),
+        FOREIGN KEY (id_empleado) REFERENCES empleados(id_empleado) ON DELETE CASCADE,
+        FOREIGN KEY (usuario_modificacion) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+      );
+    `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS horario_periodos (
+        id_periodo INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_tienda INTEGER NOT NULL,
+        mes TEXT NOT NULL,
+        estado TEXT NOT NULL CHECK (estado IN ('BORRADOR', 'ENVIADO')) DEFAULT 'BORRADOR',
+        fecha_envio DATETIME NULL,
+        usuario_envio INTEGER NULL,
+        UNIQUE(id_tienda, mes),
+        FOREIGN KEY (id_tienda) REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
+        FOREIGN KEY (usuario_envio) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+      );
+    `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS horario_solicitudes (
+        id_solicitud INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_tienda INTEGER NOT NULL,
+        mes TEXT NOT NULL,
+        motivo TEXT NOT NULL,
+        estado TEXT NOT NULL CHECK (estado IN ('PENDIENTE', 'APROBADA', 'RECHAZADA')) DEFAULT 'PENDIENTE',
+        solicitado_por INTEGER,
+        fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
+        resuelto_por INTEGER NULL,
+        fecha_resolucion DATETIME NULL,
+        comentario_resolucion TEXT NULL,
+        FOREIGN KEY (id_tienda) REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
+        FOREIGN KEY (solicitado_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+        FOREIGN KEY (resuelto_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+      );
+    `);
+
     // Verificar si existen datos
     sqliteDb.get("SELECT COUNT(*) as count FROM tiendas", (err, row) => {
       if (err) return console.error('[DB SQLite Init Error]', err);

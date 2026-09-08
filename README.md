@@ -1,32 +1,48 @@
-# bissú Capacity - Sistema de Gestión de Asistencia y Capacidad
+# bissú Capacity & Horarios - Sistema de Gestión Operativa
 
-Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad y asistencia por tienda de **bissú ACCESORIOS**.
+Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad, asistencia y programación de horarios por tienda de **bissú ACCESORIOS**.
 
 ---
 
 ## 🚀 Características Principales
 
-1. **Aislamiento por Tienda (Row-Level Security - RLS)**:
-   - Cada tienda (`TIENDA`) solo puede visualizar y editar la matriz de capacidad de sus propios empleados.
-   - El backend valida estrictamente que ninguna tienda pueda alterar registros de otra sede.
-   - Roles de administración (`ADMIN`, `SUPERVISOR`, `RRHH`) tienen vista consolidada y selector de tiendas.
-2. **Interfaz Antigravity & Identidad Bissú**:
-   - Tarjetas métricas flotantes con sombras suaves y estética moderna.
-   - Tabla interactiva estilo hoja de cálculo con celdas elevables al pasar el cursor (hover).
-   - Edición ultra rápida por clic (valores `1.0`, `0.5`, `0.0`) y notificaciones emergentes (Toast notifications).
-3. **Exportación Directa a Power Query / Power BI**:
-   - Endpoint `/api/capacity/export` protegido por API Key.
-   - Devuelve la matriz desdinamizada (*unpivoted*) lista para consumir directamente en Power Query sin transformaciones manuales.
-4. **Soporte Dual de Base de Datos**:
-   - Soporta **PostgreSQL** mediante `pg`.
-   - Incluye respaldo automático en **SQLite** local si no se configura `DATABASE_URL`, permitiendo correr la app al instante sin instalar bases de datos externas.
+### 1. 📊 Módulo de Capacity & Asistencia
+- **Matriz Interactiva estilo Hoja de Cálculo**: Visualización por colaborador y días del mes.
+- **Edición Ultra Rápida**: Cambio dinámico de valores (`1.0`, `0.5`, `0.0`) con notificaciones en tiempo real (*Toast notifications*).
+- **Métricas y KPIs**: Resumen en tiempo real de colaboradores activos, porcentaje promedio de capacity, asistencias completas y días trabajados.
+
+### 2. 📅 Módulo de Gestión de Horarios
+- **Planificación Independiente de Horarios**: Espacio dedicado para la programación operativa mensual.
+- **Control de Ciclo de Vida (`BORRADOR` vs `ENVIADO`)**:
+  - Mientras el horario está en `BORRADOR`, la tienda puede editar libremente los turnos.
+  - Al hacer clic en **Enviar Horario**, el período pasa a estado `ENVIADO` y se bloquea para evitar ediciones accidentales o no autorizadas por la tienda.
+- **Flujo de Solicitudes y Permisos de Reapertura**:
+  - Si una tienda necesita ajustar un horario ya enviado (ej. emergencias de personal), puede enviar una **Solicitud de Permiso** indicando el motivo.
+  - Los roles administrativos (`ADMIN`, `SUPERVISOR`, `RRHH`) cuentan con una **Bandeja de Solicitudes** para revisar, aprobar o rechazar peticiones. Al aprobar, el período vuelve a `BORRADOR` permitiendo modificaciones a la sede.
+
+### 3. 👥 Gestión de Colaboradores y Alta Rotación
+- **Control de Personal**: Registro de colaboradores por DNI, código de asesor, nombre, puesto (Encargada, Asesor de ventas, Cajera), régimen (`FT` o `PT`), celular y correo corporativo.
+- **Manejo de Bajas**: Soporte para marcar fecha de baja / estado inactivo, previniendo apariciones inconsistentes en matrices de meses posteriores a su retiro.
+
+### 4. 🔒 Aislamiento por Tienda (Row-Level Security - RLS)
+- Validación estricta en el backend: cada cuenta de rol `TIENDA` solo puede visualizar y modificar los datos de su propia sede.
+- Los roles de gestión (`ADMIN`, `SUPERVISOR`, `RRHH`) poseen acceso consolidado a todas las sedes mediante un selector interactivo de tiendas.
+
+### 5. 📈 Exportación Directa a Power Query / Power BI
+- Endpoint `/api/capacity/export` protegido por API Key.
+- Devuelve la matriz desdinamizada (*unpivoted*) lista para ser consumida directamente en Excel o Power BI sin transformaciones manuales de limpieza.
+
+### 6. 🔄 Dualidad de Base de Datos y Sincronización Automática
+- **Desarrollo sin Fricción**: Respaldo automático en **SQLite** local (`db/capacity.db`) si no se define `DATABASE_URL`.
+- **Sincronización a PostgreSQL**: Script automatizado (`db/sync_to_postgres.js`) para migrar y sincronizar datos locales a instancias PostgreSQL en producción de forma transparente.
 
 ---
 
 ## 🛠️ Requisitos Previos
 
-- **Node.js**: v18 o superior.
-- **PostgreSQL** *(opcional)*: v14 o superior (si no está disponible, el sistema usará SQLite automáticamente).
+- **Node.js**: v18.0 o superior.
+- **Python**: 3.x (opcional, para ejecutar scripts de importación masiva desde Excel).
+- **PostgreSQL**: v14 o superior (opcional; si no está configurado, el sistema usará SQLite local).
 
 ---
 
@@ -37,65 +53,109 @@ Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad
    npm install
    ```
 
-2. **Iniciar la aplicación**:
-   ```bash
-   npm start
-   ```
+2. **Iniciar el servidor**:
+   - Modo Producción:
+     ```bash
+     npm start
+     ```
+   - Modo Desarrollo (con recarga automática):
+     ```bash
+     npm run dev
+     ```
 
-3. **Acceder desde el navegador**:
-   - App Principal: `http://localhost:3000`
-   - Pantalla de Login: `http://localhost:3000/login`
+3. **Acceder a la aplicación**:
+   - **App Principal**: [http://localhost:3000](http://localhost:3000)
+   - **Pantalla de Login**: [http://localhost:3000/login](http://localhost:3000/login)
 
 ---
 
 ## 🔑 Credenciales de Demostración
 
-| Rol | Correo Electrónico | Contraseña | Alcance / Permisos |
-| :--- | :--- | :--- | :--- |
-| **Tienda (Jesús María)** | `bissujesusmaria@bissu.pe` | `123456` | Solo ve y edita la tienda Jesús María. |
-| **Tienda (San Isidro)** | `bissusanisidro@bissu.pe` | `123456` | Solo ve y edita la tienda San Isidro. |
-| **Administrador** | `admin@bissu.pe` | `123456` | Acceso global a todas las tiendas y exportación. |
-| **Supervisor** | `supervisor@bissu.pe` | `123456` | Acceso global y supervisión por tienda. |
+> **Contraseña por defecto para todas las cuentas de prueba:** `123456`
+
+| Rol | Correo Electrónico | Alcance y Permisos |
+| :--- | :--- | :--- |
+| **Tienda (Jesús María)** | `bissujesusmaria@bissu.pe` | Gestión exclusiva de la tienda Jesús María. |
+| **Tienda (Chiclayo)** | `bissuchiclayo@bissu.pe` | Gestión exclusiva de la tienda Chiclayo. |
+| **Tienda (Porongoche)** | `bissuporongoche@bissu.pe` | Gestión exclusiva de la tienda Porongoche AQP. |
+| **Administrador** | `admin@bissu.pe` | Acceso global a todas las tiendas, aprobaciones y exportación Power BI. |
+| **Supervisor** | `supervisor@bissu.pe` | Supervisión global, cambio de tiendas y aprobación de permisos. |
+| **Recursos Humanos** | `rrhh@bissu.pe` | Gestión global de colaboradores, horarios y solicitudes. |
 
 ---
 
-## 🗄️ Configuración de PostgreSQL (Opcional)
+## 🌐 API & Endpoints
 
-Si deseas utilizar una base de datos PostgreSQL en producción o servidor local:
+### 🔐 Autenticación (`/api/auth`)
+- `POST /api/auth/login`: Iniciar sesión (recibe `email` y `password`, retorna JWT).
+- `GET /api/auth/me`: Verificar sesión actual del usuario autenticado.
 
-1. Crea la base de datos en PostgreSQL:
-   ```sql
-   CREATE DATABASE bissu_capacity;
-   ```
-2. Ejecuta los scripts SQL provistos en el directorio `db/`:
-   ```bash
-   psql -U postgres -d bissu_capacity -f db/schema.sql
-   psql -U postgres -d bissu_capacity -f db/seed.sql
-   ```
-3. Crea un archivo `.env` tomando como base `.env.example`:
-   ```env
-   PORT=3000
-   HOST=0.0.0.0
-   JWT_SECRET=bissu_capacity_secret_key_2026_super_secure
-   API_KEY_EXPORT=bissu_power_query_key_98765
-   DATABASE_URL=postgresql://postgres:tu_password@localhost:5432/bissu_capacity
-   ```
+### 🏬 Tiendas y Capacity (`/api/capacity`)
+- `GET /api/tiendas`: Lista de todas las tiendas (selectores).
+- `GET /api/capacity?mes=YYYY-MM&id_tienda=X`: Obtener matriz de capacity por tienda y mes.
+- `PUT /api/capacity/bulk-update`: Actualizar registros de capacity en lote.
+- `GET /api/capacity/export?mes=YYYY-MM&api_key=KEY`: Endpoint público desdinamizado para Power Query / Power BI.
+- `POST /api/empleados`: Crear un nuevo colaborador.
+- `PUT /api/empleados/:id`: Actualizar datos o dar de baja a un colaborador.
+
+### 📅 Horarios (`/api/horarios`)
+- `GET /api/horarios?mes=YYYY-MM&id_tienda=X`: Obtener matriz de horarios y estado del período (`BORRADOR` / `ENVIADO`).
+- `PUT /api/horarios/bulk-update`: Actualizar turnos de horarios (bloqueado si el período está `ENVIADO` para rol `TIENDA`).
+- `POST /api/horarios/enviar`: Bloquear el horario del mes pasando el estado a `ENVIADO`.
+- `POST /api/horarios/solicitar-permiso`: Enviar solicitud con motivo para reabrir edición de un horario enviado.
+- `GET /api/horarios/solicitudes?estado=PENDIENTE`: Listar solicitudes de permisos.
+- `POST /api/horarios/solicitudes/:id/resolver`: Aprobar (reabre a `BORRADOR`) o rechazar la solicitud (solo ADMIN/SUPERVISOR/RRHH).
+
+---
+
+## 🗄️ Base de Datos y Sincronización
+
+### 1. Configuración de Variables de Entorno (`.env`)
+
+Crea un archivo `.env` basado en `.env.example`:
+```env
+PORT=3000
+HOST=0.0.0.0
+JWT_SECRET=bissu_capacity_secret_key_2026_super_secure
+API_KEY_EXPORT=bissu_power_query_key_98765
+
+# Descomenta para usar PostgreSQL en lugar de SQLite local:
+# DATABASE_URL=postgresql://postgres:tu_password@localhost:5432/bissu_capacity
+```
+
+### 2. Migración y Sembrado Manual PostgreSQL
+```bash
+psql -U postgres -d bissu_capacity -f db/schema.sql
+psql -U postgres -d bissu_capacity -f db/seed.sql
+```
+
+### 3. Sincronizador SQLite ➔ PostgreSQL
+Para sincronizar automáticamente los datos de la base de datos local SQLite (`db/capacity.db`) con tu base de datos PostgreSQL:
+```bash
+node db/sync_to_postgres.js
+```
+
+### 4. Importación Masiva desde Excel
+Para actualizar los registros a partir de las plantillas oficiales Excel:
+```bash
+python db/import_real_data.py
+```
 
 ---
 
 ## 📊 Integración con Power Query / Power BI
 
-Para conectar Power BI o Excel directamente a los datos de capacity sin transformaciones manuales:
+Para sincronizar automáticamente Power BI o Excel con los datos de Capacity:
 
-1. En la aplicación web, inicia sesión como Administrador o haz clic en el botón **Power Query BI** en la barra superior.
+1. En la aplicación web, accede como Administrador o usa el botón **Power Query BI** en la barra superior.
 2. Copia la URL de exportación:
    ```text
    http://localhost:3000/api/capacity/export?mes=2026-08&api_key=bissu_power_query_key_98765
    ```
 3. En **Power BI Desktop** o **Excel**:
-   - Ve a `Obtener Datos` -> `Desde la Web`.
-   - Pega la URL y presiona `Aceptar`.
-4. Los datos se cargarán en formato desdinamizado con las siguientes columnas:
+   - Ir a `Obtener Datos` ➔ `Desde la Web`.
+   - Pegar la URL y seleccionar `Aceptar`.
+4. El conjunto de datos incluye las columnas desdinamizadas:
    - `fecha`, `dni`, `codigo_empleado`, `nombre_empleado`, `puesto`, `regimen`, `codigo_almacen`, `nombre_tienda`, `valor`.
 
 ---
@@ -106,23 +166,31 @@ Para conectar Power BI o Excel directamente a los datos de capacity sin transfor
 ├── package.json
 ├── .env.example
 ├── db/
-│   ├── schema.sql
-│   └── seed.sql
+│   ├── schema.sql             # Definición de tablas PostgreSQL (Capacity, Horarios, Solicitudes)
+│   ├── seed.sql               # Datos iniciales (Tiendas, Usuarios, Empleados, Matriz)
+│   ├── capacity.db            # Base de datos SQLite de respaldo local
+│   ├── sync_to_postgres.js    # Sincronizador automatizado SQLite -> PostgreSQL
+│   └── import_real_data.py    # Script de importación desde plantillas Excel
 ├── src/
-│   ├── app.js
+│   ├── app.js                 # Punto de entrada de la aplicación Fastify
 │   ├── config/
-│   │   └── db.js
+│   │   └── db.js              # Controlador dual de base de datos (PostgreSQL / SQLite)
 │   ├── middleware/
-│   │   └── auth.js
+│   │   └── auth.js            # Autenticación JWT y validación de API Key para exportación
 │   ├── routes/
-│   │   ├── auth.js
-│   │   └── capacity.js
+│   │   ├── auth.js            # Rutas de autenticación (/api/auth)
+│   │   ├── capacity.js        # Rutas de capacity y colaboradores (/api/capacity)
+│   │   └── horarios.js        # Rutas de gestión de horarios y permisos (/api/horarios)
+│   ├── utils/
+│   │   ├── dates.js           # Utilidades para cálculo de días en meses
+│   │   └── empleados.js       # Filtros de colaboradores activos / alta rotación
 │   └── public/
-│       ├── index.html
-│       ├── login.html
+│       ├── index.html         # Interfaz principal (Capacity + Horarios + Solicitudes)
+│       ├── login.html         # Pantalla de inicio de sesión
 │       ├── css/
-│       │   └── custom.css
+│       │   └── custom.css     # Estilos y tema Antigravity para bissú
 │       └── js/
-│           └── app.js
+│           └── app.js         # Lógica cliente (SPA, renders, llamadas API, toasts)
 └── README.md
 ```
+
