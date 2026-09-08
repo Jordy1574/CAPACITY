@@ -1,31 +1,29 @@
 const { query } = require('../config/db');
 
-async function getPeriodo(idTienda, mes) {
-  const rows = await query('SELECT * FROM horario_periodos WHERE id_tienda = $1 AND mes = $2', [idTienda, mes]);
-  return rows[0] || { id_tienda: idTienda, mes, estado: 'BORRADOR', fecha_envio: null, usuario_envio: null };
+async function getSemana(idTienda, semanaInicio) {
+  const rows = await query('SELECT * FROM horario_semanas WHERE id_tienda = $1 AND semana_inicio = $2', [idTienda, semanaInicio]);
+  return rows[0] || { id_tienda: idTienda, semana_inicio: semanaInicio, confirmado_por: null, fecha_confirmacion: null };
 }
 
-async function getSolicitudPendiente(idTienda, mes) {
-  const rows = await query(
-    "SELECT * FROM horario_solicitudes WHERE id_tienda = $1 AND mes = $2 AND estado = 'PENDIENTE' ORDER BY fecha_solicitud DESC",
-    [idTienda, mes]
+function marcarConfirmado(idTienda, semanaInicio, idUsuario) {
+  return query(
+    `INSERT INTO horario_semanas (id_tienda, semana_inicio, confirmado_por, fecha_confirmacion)
+     VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+     ON CONFLICT (id_tienda, semana_inicio) DO UPDATE SET confirmado_por = $4, fecha_confirmacion = CURRENT_TIMESTAMP`,
+    [idTienda, semanaInicio, idUsuario, idUsuario]
   );
-  return rows[0] || null;
 }
 
-function findTurnosForEmpleados(mes, empIds) {
-  const placeholders = empIds.map((_, i) => `$${i + 2}`).join(',');
-  // Importante: el driver SQLite de query() convierte $N a '?' posicional según
-  // el orden en que aparecen EN EL TEXTO (no por su número), así que $1 debe
-  // aparecer primero en el SQL para que coincida con el primer elemento del
-  // array de params (ver query() en src/config/db.js).
+function findTurnosForFechas(fechas, empIds) {
+  const fechaPlaceholders = fechas.map((_, i) => `$${i + 1}`).join(',');
+  const empPlaceholders = empIds.map((_, i) => `$${fechas.length + i + 1}`).join(',');
   const sql = `
     SELECT id_turno, id_empleado, CAST(fecha AS TEXT) AS fecha, hora_inicio, hora_fin
     FROM horario_turnos
-    WHERE CAST(fecha AS TEXT) LIKE $1 AND id_empleado IN (${placeholders})
+    WHERE CAST(fecha AS TEXT) IN (${fechaPlaceholders}) AND id_empleado IN (${empPlaceholders})
     ORDER BY hora_inicio ASC
   `;
-  return query(sql, [`${mes}%`, ...empIds]);
+  return query(sql, [...fechas, ...empIds]);
 }
 
 function deleteTurnosForDia(idEmpleado, fecha) {
@@ -39,34 +37,76 @@ function insertTurno(idEmpleado, fecha, horaInicio, horaFin, idUsuario) {
   );
 }
 
-async function markEnviado(idTienda, mes, idUsuario, periodo) {
-  if (periodo.id_periodo) {
-    return query(
-      "UPDATE horario_periodos SET estado = 'ENVIADO', fecha_envio = CURRENT_TIMESTAMP, usuario_envio = $1 WHERE id_periodo = $2",
-      [idUsuario, periodo.id_periodo]
-    );
+// --- Solicitudes (con turnos propuestos, no solo un motivo) ---
+
+async function getSolicitudPendiente(idTienda, semanaInicio) {
+  const rows = await query(
+    "SELECT * FROM horario_solicitudes WHERE id_tienda = $1 AND semana_inicio = $2 AND estado = 'PENDIENTE' ORDER BY fecha_solicitud DESC",
+    [idTienda, semanaInicio]
+  );
+  return rows[0] || null;
+}
+
+async function getCambiosDeSolicitud(idSolicitud) {
+  const dias = await query('SELECT id_empleado, CAST(fecha AS TEXT) AS fecha FROM horario_solicitud_dias WHERE id_solicitud = $1', [idSolicitud]);
+  const turnos = await query(
+    'SELECT id_empleado, CAST(fecha AS TEXT) AS fecha, hora_inicio, hora_fin FROM horario_solicitud_turnos WHERE id_solicitud = $1 ORDER BY hora_inicio ASC',
+    [idSolicitud]
+  );
+
+  const turnosPorDia = {};
+  turnos.forEach(t => {
+    const key = `${t.id_empleado}_${t.fecha}`;
+    if (!turnosPorDia[key]) turnosPorDia[key] = [];
+    turnosPorDia[key].push({ hora_inicio: t.hora_inicio, hora_fin: t.hora_fin });
+  });
+
+  return dias.map(d => ({
+    id_empleado: d.id_empleado,
+    fecha: d.fecha,
+    turnos: turnosPorDia[`${d.id_empleado}_${d.fecha}`] || []
+  }));
+}
+
+async function eliminarSolicitud(idSolicitud) {
+  await query('DELETE FROM horario_solicitud_turnos WHERE id_solicitud = $1', [idSolicitud]);
+  await query('DELETE FROM horario_solicitud_dias WHERE id_solicitud = $1', [idSolicitud]);
+  await query('DELETE FROM horario_solicitudes WHERE id_solicitud = $1', [idSolicitud]);
+}
+
+async function eliminarSolicitudPendiente(idTienda, semanaInicio) {
+  const existente = await getSolicitudPendiente(idTienda, semanaInicio);
+  if (existente) {
+    await eliminarSolicitud(existente.id_solicitud);
   }
-  return query(
-    "INSERT INTO horario_periodos (id_tienda, mes, estado, fecha_envio, usuario_envio) VALUES ($1, $2, 'ENVIADO', CURRENT_TIMESTAMP, $3)",
-    [idTienda, mes, idUsuario]
-  );
 }
 
-function reabrirPeriodo(idTienda, mes) {
-  return query("UPDATE horario_periodos SET estado = 'BORRADOR' WHERE id_tienda = $1 AND mes = $2", [idTienda, mes]);
-}
+async function crearSolicitud(idTienda, semanaInicio, motivo, idUsuario, cambios) {
+  await eliminarSolicitudPendiente(idTienda, semanaInicio);
 
-function insertSolicitud(idTienda, mes, motivo, idUsuario) {
-  return query(
-    "INSERT INTO horario_solicitudes (id_tienda, mes, motivo, estado, solicitado_por) VALUES ($1, $2, $3, 'PENDIENTE', $4)",
-    [idTienda, mes, motivo, idUsuario]
+  const rows = await query(
+    "INSERT INTO horario_solicitudes (id_tienda, semana_inicio, motivo, estado, solicitado_por) VALUES ($1, $2, $3, 'PENDIENTE', $4) RETURNING id_solicitud",
+    [idTienda, semanaInicio, motivo, idUsuario]
   );
+  const idSolicitud = rows[0].id_solicitud;
+
+  for (const cambio of cambios) {
+    await query('INSERT INTO horario_solicitud_dias (id_solicitud, id_empleado, fecha) VALUES ($1, $2, $3)', [idSolicitud, cambio.id_empleado, cambio.fecha]);
+    for (const bloque of cambio.turnos) {
+      await query(
+        'INSERT INTO horario_solicitud_turnos (id_solicitud, id_empleado, fecha, hora_inicio, hora_fin) VALUES ($1, $2, $3, $4, $5)',
+        [idSolicitud, cambio.id_empleado, cambio.fecha, bloque.hora_inicio, bloque.hora_fin]
+      );
+    }
+  }
+
+  return idSolicitud;
 }
 
 function findSolicitudesConJoins({ idTienda, estado }) {
   let sql = `
     SELECT
-      s.id_solicitud, s.id_tienda, s.mes, s.motivo, s.estado,
+      s.id_solicitud, s.id_tienda, s.semana_inicio, s.motivo, s.estado,
       s.fecha_solicitud, s.fecha_resolucion, s.comentario_resolucion,
       t.nombre_tienda, t.codigo_almacen,
       us.email AS solicitado_por_email,
@@ -109,14 +149,15 @@ function resolverSolicitud(id, nuevoEstado, idUsuario, comentario) {
 }
 
 module.exports = {
-  getPeriodo,
-  getSolicitudPendiente,
-  findTurnosForEmpleados,
+  getSemana,
+  marcarConfirmado,
+  findTurnosForFechas,
   deleteTurnosForDia,
   insertTurno,
-  markEnviado,
-  reabrirPeriodo,
-  insertSolicitud,
+  getSolicitudPendiente,
+  getCambiosDeSolicitud,
+  crearSolicitud,
+  eliminarSolicitud,
   findSolicitudesConJoins,
   findSolicitudById,
   resolverSolicitud

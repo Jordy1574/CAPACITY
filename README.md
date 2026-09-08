@@ -53,19 +53,35 @@ Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad
    npm install
    ```
 
-2. **Iniciar el servidor**:
+2. **Construir el frontend** (genera `dist/`, que Fastify sirve como estático):
+   ```bash
+   npm run build
+   ```
+
+3. **Iniciar el servidor**:
    - Modo Producción:
      ```bash
      npm start
      ```
-   - Modo Desarrollo (con recarga automática):
+   - Modo Desarrollo (backend con recarga automática):
      ```bash
      npm run dev
      ```
 
-3. **Acceder a la aplicación**:
+4. **Acceder a la aplicación**:
    - **App Principal**: [http://localhost:3000](http://localhost:3000)
    - **Pantalla de Login**: [http://localhost:3000/login](http://localhost:3000/login)
+
+### Desarrollo del frontend con hot-reload
+
+El frontend (React + Vite, en `client/`) también puede correr con su propio servidor de desarrollo, que hace proxy de `/api` hacia Fastify:
+
+```bash
+npm run dev          # Terminal 1: backend Fastify en :3000
+npm run dev:client   # Terminal 2: Vite en :5173, con hot-reload
+```
+
+Con este flujo, abre [http://localhost:5173](http://localhost:5173) mientras desarrollas; `npm run build` sigue siendo necesario antes de usar `npm start`/`npm run dev` solos (sin Vite), ya que Fastify sirve el build de `dist/`.
 
 ---
 
@@ -171,7 +187,11 @@ Para sincronizar automáticamente Power BI o Excel con los datos de Capacity:
 
 ```text
 ├── package.json
+├── vite.config.js             # Config de Vite (root: client/, build.outDir: ../dist)
+├── tailwind.config.js
+├── postcss.config.js
 ├── .env.example
+├── dist/                      # Build de producción del frontend (generado, servido por Fastify)
 ├── db/
 │   ├── schema.sql             # Definición de tablas PostgreSQL (Capacity, Horarios, Solicitudes)
 │   ├── seed.sql               # Datos iniciales (Tiendas, Usuarios, Empleados, Matriz)
@@ -179,7 +199,8 @@ Para sincronizar automáticamente Power BI o Excel con los datos de Capacity:
 │   ├── sync_to_postgres.js    # Sincronizador automatizado SQLite -> PostgreSQL
 │   └── import_real_data.py    # Script de importación desde plantillas Excel
 ├── src/
-│   ├── app.js                 # Punto de entrada Fastify: plugins, error handler global, registro de rutas
+│   ├── app.js                 # Punto de entrada Fastify: plugins, error handler global, registro de rutas,
+│   │                           # servido de dist/ + fallback SPA para rutas del cliente
 │   ├── config/
 │   │   └── db.js              # Controlador dual de base de datos (PostgreSQL / SQLite)
 │   ├── errors/
@@ -203,15 +224,23 @@ Para sincronizar automáticamente Power BI o Excel con los datos de Capacity:
 │   │   ├── capacity.js         # /api/capacity, /api/tiendas, /api/empleados
 │   │   ├── horarios.js         # /api/horarios
 │   │   └── usuarios.js         # /api/usuarios (gestión de usuarios, solo ADMIN)
-│   ├── utils/
-│   │   └── dates.js            # Utilidades para cálculo de días en meses
-│   └── public/
-│       ├── index.html         # Interfaz principal (Capacity + Horarios + Solicitudes)
-│       ├── login.html         # Pantalla de inicio de sesión
-│       ├── css/
-│       │   └── custom.css     # Estilos y tema Antigravity para bissú
-│       └── js/
-│           └── app.js         # Lógica cliente (SPA, renders, llamadas API, toasts)
+│   └── utils/
+│       └── dates.js            # Utilidades para cálculo de días en meses
+├── client/                     # Frontend: React + Vite (SPA modular, code-splitting por ruta)
+│   ├── index.html
+│   └── src/
+│       ├── main.jsx            # Entry point: providers globales (Router, React Query, Auth, Toast, Confirm)
+│       ├── App.jsx             # Rutas (react-router), lazy loading por módulo
+│       ├── api/                # Cliente HTTP + funciones por dominio (auth, tiendas, capacity, horarios, usuarios)
+│       ├── auth/                # AuthContext, ProtectedRoute, RoleGuard
+│       ├── components/          # UI compartida: Header, Sidebar, SaveBar, StoreSelector
+│       ├── hooks/                # useToast, useConfirm
+│       ├── features/
+│       │   ├── login/           # LoginPage
+│       │   ├── capacity/        # Tabla de asistencia, KPIs, modal de colaborador, ciclo de valores
+│       │   ├── horarios/        # Grilla semanal, modal de turno, solicitudes, día de descanso
+│       │   └── usuarios/        # CRUD de usuarios (solo ADMIN)
+│       └── styles/index.css     # Tailwind + tema Antigravity para bissú
 └── README.md
 ```
 

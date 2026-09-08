@@ -4,29 +4,22 @@ const { requireRole, ROLES_ADMIN } = require('../middleware/roles');
 
 async function horariosRoutes(fastify, options) {
 
-  // GET /api/horarios?mes=2026-09&id_tienda=1
-  fastify.get('/api/horarios', { onRequest: [authenticate] }, async (request, reply) => {
-    const data = await horariosService.getHorarioMatrix(request.user, request.query.mes, request.query.id_tienda);
+  // GET /api/horarios/semana?semana_inicio=2026-08-31&id_tienda=1
+  fastify.get('/api/horarios/semana', { onRequest: [authenticate] }, async (request, reply) => {
+    const data = await horariosService.getHorarioSemana(request.user, request.query.semana_inicio, request.query.id_tienda);
     return reply.send(data);
   });
 
-  // PUT /api/horarios/bulk-update
+  // PUT /api/horarios/bulk-update - Edición en vivo (bloqueada para TIENDA una vez confirmada como oficial)
   fastify.put('/api/horarios/bulk-update', { onRequest: [authenticate] }, async (request, reply) => {
     const result = await horariosService.bulkUpdateHorario(request.user, request.body);
     return reply.send(result);
   });
 
-  // POST /api/horarios/enviar - Bloquea el horario del mes para edición directa
-  fastify.post('/api/horarios/enviar', { onRequest: [authenticate] }, async (request, reply) => {
-    const { mes, id_tienda } = request.body || {};
-    const result = await horariosService.enviarHorario(request.user, mes, id_tienda);
-    return reply.send(result);
-  });
-
-  // POST /api/horarios/solicitar-permiso - La tienda pide permiso para reabrir un horario ya enviado
-  fastify.post('/api/horarios/solicitar-permiso', { onRequest: [authenticate] }, async (request, reply) => {
-    const { mes, motivo, id_tienda } = request.body || {};
-    const result = await horariosService.solicitarPermiso(request.user, mes, motivo, id_tienda);
+  // POST /api/horarios/solicitudes - Crea/reemplaza la solicitud de cambio pendiente de una tienda+semana
+  fastify.post('/api/horarios/solicitudes', { onRequest: [authenticate] }, async (request, reply) => {
+    const { semana_inicio, id_tienda, motivo, cambios } = request.body || {};
+    const result = await horariosService.crearSolicitud(request.user, semana_inicio, id_tienda, motivo, cambios);
     return reply.send(result);
   });
 
@@ -36,13 +29,13 @@ async function horariosRoutes(fastify, options) {
     return reply.send({ solicitudes });
   });
 
-  // POST /api/horarios/solicitudes/:id/resolver - Aprobar o rechazar (reabre el periodo si se aprueba)
+  // POST /api/horarios/solicitudes/:id/resolver - Aprobar (aplica los turnos y confirma oficial) o rechazar
   fastify.post('/api/horarios/solicitudes/:id/resolver', {
     onRequest: [authenticate, requireRole(...ROLES_ADMIN)]
   }, async (request, reply) => {
     const idSolicitud = parseInt(request.params.id, 10);
-    const { aprobar, comentario } = request.body || {};
-    const result = await horariosService.resolverSolicitudService(request.user, idSolicitud, aprobar, comentario);
+    const { aprobar, comentario, cambios } = request.body || {};
+    const result = await horariosService.resolverSolicitudService(request.user, idSolicitud, aprobar, comentario, cambios);
     return reply.send(result);
   });
 

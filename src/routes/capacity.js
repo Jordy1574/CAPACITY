@@ -1,6 +1,6 @@
 const tiendasRepository = require('../repositories/tiendasRepository');
 const capacityService = require('../services/capacityService');
-const { authenticate, authenticateExport } = require('../middleware/auth');
+const { authenticate, authenticateExport, API_KEY_EXPORT } = require('../middleware/auth');
 
 async function capacityRoutes(fastify, options) {
 
@@ -51,6 +51,14 @@ async function capacityRoutes(fastify, options) {
   fastify.get('/api/capacity/export', { onRequest: [authenticateExport] }, async (request, reply) => {
     const exportData = await capacityService.exportCapacity(request.query.mes, request.query.id_tienda);
     return reply.send(exportData);
+  });
+
+  // GET /api/capacity/export-url?mes=2026-08 - arma la URL de exportación sin
+  // exponer la API key en el bundle del cliente.
+  fastify.get('/api/capacity/export-url', { onRequest: [authenticate] }, async (request, reply) => {
+    const { mes } = request.query;
+    const url = `${request.protocol}://${request.hostname}/api/capacity/export?mes=${mes}&api_key=${API_KEY_EXPORT}`;
+    return reply.send({ url });
   });
 }
 

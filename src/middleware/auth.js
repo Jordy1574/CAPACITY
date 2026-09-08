@@ -37,5 +37,6 @@ async function authenticateExport(request, reply) {
 
 module.exports = {
   authenticate,
-  authenticateExport
+  authenticateExport,
+  API_KEY_EXPORT
 };

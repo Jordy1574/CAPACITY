@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --bissu-magenta: #D81B60;
   --bissu-magenta-hover: #C2185B;
@@ -209,6 +213,12 @@ body {
 
 .btn-bissu:active {
   transform: translateY(0);
+}
+
+.btn-bissu:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Toast Notifications */

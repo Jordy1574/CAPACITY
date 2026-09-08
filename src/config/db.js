@@ -129,37 +129,75 @@ function initSqliteSchemaAndSeed() {
     `);
     sqliteDb.run(`CREATE INDEX IF NOT EXISTS idx_horario_turnos_empleado_fecha ON horario_turnos(id_empleado, fecha)`);
 
+    // Reemplaza a la antigua horario_periodos (mensual): el estado de
+    // aprobación es ahora por semana, no por mes.
+    sqliteDb.run(`DROP TABLE IF EXISTS horario_periodos`);
     sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS horario_periodos (
-        id_periodo INTEGER PRIMARY KEY AUTOINCREMENT,
+      CREATE TABLE IF NOT EXISTS horario_semanas (
+        id_semana INTEGER PRIMARY KEY AUTOINCREMENT,
         id_tienda INTEGER NOT NULL,
-        mes TEXT NOT NULL,
-        estado TEXT NOT NULL CHECK (estado IN ('BORRADOR', 'ENVIADO')) DEFAULT 'BORRADOR',
-        fecha_envio DATETIME NULL,
-        usuario_envio INTEGER NULL,
-        UNIQUE(id_tienda, mes),
+        semana_inicio TEXT NOT NULL,
+        confirmado_por INTEGER NULL,
+        fecha_confirmacion DATETIME NULL,
+        UNIQUE(id_tienda, semana_inicio),
         FOREIGN KEY (id_tienda) REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
-        FOREIGN KEY (usuario_envio) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+        FOREIGN KEY (confirmado_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+      );
+    `);
+
+    // horario_solicitudes cambia de forma (de mensual+solo-motivo a
+    // semanal+con-turnos-propuestos): si existe con el esquema viejo (columna
+    // "mes"), se recrea desde cero — son datos de prueba locales.
+    sqliteDb.all(`PRAGMA table_info(horario_solicitudes)`, (err, cols) => {
+      const esquemaViejo = !err && Array.isArray(cols) && cols.some(c => c.name === 'mes');
+      if (esquemaViejo) {
+        sqliteDb.run(`DROP TABLE IF EXISTS horario_solicitudes`);
+      }
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS horario_solicitudes (
+          id_solicitud INTEGER PRIMARY KEY AUTOINCREMENT,
+          id_tienda INTEGER NOT NULL,
+          semana_inicio TEXT NOT NULL,
+          motivo TEXT NOT NULL,
+          estado TEXT NOT NULL CHECK (estado IN ('PENDIENTE', 'APROBADA', 'RECHAZADA')) DEFAULT 'PENDIENTE',
+          solicitado_por INTEGER,
+          fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
+          resuelto_por INTEGER NULL,
+          fecha_resolucion DATETIME NULL,
+          comentario_resolucion TEXT NULL,
+          FOREIGN KEY (id_tienda) REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
+          FOREIGN KEY (solicitado_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+          FOREIGN KEY (resuelto_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+        );
+      `);
+    });
+
+    // Días (empleado+fecha) que una solicitud modifica respecto al oficial.
+    // Su ausencia = sin cambios ese día; 0 filas en horario_solicitud_turnos
+    // para ese día = se propone dejarlo sin turnos.
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS horario_solicitud_dias (
+        id_solicitud INTEGER NOT NULL,
+        id_empleado INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        PRIMARY KEY (id_solicitud, id_empleado, fecha),
+        FOREIGN KEY (id_solicitud) REFERENCES horario_solicitudes(id_solicitud) ON DELETE CASCADE,
+        FOREIGN KEY (id_empleado) REFERENCES empleados(id_empleado) ON DELETE CASCADE
       );
     `);
 
     sqliteDb.run(`
-      CREATE TABLE IF NOT EXISTS horario_solicitudes (
-        id_solicitud INTEGER PRIMARY KEY AUTOINCREMENT,
-        id_tienda INTEGER NOT NULL,
-        mes TEXT NOT NULL,
-        motivo TEXT NOT NULL,
-        estado TEXT NOT NULL CHECK (estado IN ('PENDIENTE', 'APROBADA', 'RECHAZADA')) DEFAULT 'PENDIENTE',
-        solicitado_por INTEGER,
-        fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
-        resuelto_por INTEGER NULL,
-        fecha_resolucion DATETIME NULL,
-        comentario_resolucion TEXT NULL,
-        FOREIGN KEY (id_tienda) REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
-        FOREIGN KEY (solicitado_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
-        FOREIGN KEY (resuelto_por) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+      CREATE TABLE IF NOT EXISTS horario_solicitud_turnos (
+        id_solicitud INTEGER NOT NULL,
+        id_empleado INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        hora_inicio TEXT NOT NULL,
+        hora_fin TEXT NOT NULL,
+        FOREIGN KEY (id_solicitud) REFERENCES horario_solicitudes(id_solicitud) ON DELETE CASCADE,
+        FOREIGN KEY (id_empleado) REFERENCES empleados(id_empleado) ON DELETE CASCADE
       );
     `);
+    sqliteDb.run(`CREATE INDEX IF NOT EXISTS idx_horario_solicitud_turnos ON horario_solicitud_turnos(id_solicitud, id_empleado, fecha)`);
 
     // Verificar si existen datos
     sqliteDb.get("SELECT COUNT(*) as count FROM tiendas", (err, row) => {
@@ -185,7 +223,8 @@ async function query(sql, params = []) {
   } else {
     return new Promise((resolve, reject) => {
       const sqliteSql = sql.replace(/\$(\d+)/g, '?');
-      const isSelect = /^\s*(SELECT|PRAGMA|WITH)/i.test(sql);
+      // Un INSERT/UPDATE con RETURNING produce filas igual que un SELECT.
+      const isSelect = /^\s*(SELECT|PRAGMA|WITH)/i.test(sql) || /\bRETURNING\b/i.test(sql);
       if (isSelect) {
         sqliteDb.all(sqliteSql, params, (err, rows) => {
           if (err) return reject(err);

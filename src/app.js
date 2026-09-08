@@ -33,8 +33,10 @@ fastify.register(require('@fastify/jwt'), {
   secret: JWT_SECRET
 });
 
+const DIST_DIR = path.join(__dirname, '../dist');
+
 fastify.register(require('@fastify/static'), {
-  root: path.join(__dirname, 'public'),
+  root: DIST_DIR,
   prefix: '/'
 });
 
@@ -44,24 +46,15 @@ fastify.register(require('./routes/capacity'));
 fastify.register(require('./routes/horarios'));
 fastify.register(require('./routes/usuarios'));
 
-// Ruta raíz sirve index.html
-fastify.get('/', async (request, reply) => {
-  return reply.sendFile('index.html');
-});
-
-// Ruta /login sirve login.html
-fastify.get('/login', async (request, reply) => {
-  return reply.sendFile('login.html');
-});
-
-// Rutas de la SPA: cada sección del sidebar sirve el mismo index.html
-// (el enrutamiento real ocurre en el cliente vía History API en app.js).
-// Agregar una nueva sección al sidebar implica sumar su ruta aquí.
-const SPA_ROUTES = ['/capacity', '/horarios', '/usuarios'];
-SPA_ROUTES.forEach(route => {
-  fastify.get(route, async (request, reply) => {
-    return reply.sendFile('index.html');
-  });
+// Fallback de la SPA: cualquier GET que no sea /api/* ni un archivo estático
+// existente sirve el index.html del build de React (react-router maneja la
+// ruta en el cliente). Agregar una sección nueva al sidebar no requiere tocar
+// el backend.
+fastify.setNotFoundHandler((request, reply) => {
+  if (request.method !== 'GET' || request.raw.url.startsWith('/api/')) {
+    return reply.status(404).send({ error: 'No encontrado.' });
+  }
+  return reply.sendFile('index.html', DIST_DIR);
 });
 
 // Iniciar servidor
