@@ -66,7 +66,8 @@ async function syncToPg() {
           correo_asesor VARCHAR(150) NULL,
           id_tienda INT NOT NULL REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
           situacion VARCHAR(20) DEFAULT 'ACTIVO',
-          fecha_baja DATE NULL
+          fecha_baja DATE NULL,
+          dia_descanso VARCHAR(20) NULL
       );
 
       CREATE TABLE capacity_diario (
@@ -88,6 +89,17 @@ async function syncToPg() {
           fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT unique_empleado_fecha_horario UNIQUE(id_empleado, fecha)
       );
+
+      CREATE TABLE horario_turnos (
+          id_turno SERIAL PRIMARY KEY,
+          id_empleado INT NOT NULL REFERENCES empleados(id_empleado) ON DELETE CASCADE,
+          fecha DATE NOT NULL,
+          hora_inicio VARCHAR(5) NOT NULL,
+          hora_fin VARCHAR(5) NOT NULL,
+          usuario_modificacion INT REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+          fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX idx_horario_turnos_empleado_fecha ON horario_turnos(id_empleado, fecha);
 
       CREATE TABLE horario_periodos (
           id_periodo SERIAL PRIMARY KEY,
@@ -137,9 +149,9 @@ async function syncToPg() {
     const emps = await new Promise((res, rej) => sqliteDb.all("SELECT * FROM empleados ORDER BY id_empleado ASC", (e, r) => e ? rej(e) : res(r)));
     for (const e of emps) {
       await client.query(`
-        INSERT INTO empleados (id_empleado, dni, codigo_empleado, nombre_completo, puesto, regimen, celular, correo_asesor, id_tienda, situacion, fecha_baja)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      `, [e.id_empleado, e.dni, e.codigo_empleado, e.nombre_completo, e.puesto, e.regimen, e.celular, e.correo_asesor, e.id_tienda, e.situacion, e.fecha_baja || null]);
+        INSERT INTO empleados (id_empleado, dni, codigo_empleado, nombre_completo, puesto, regimen, celular, correo_asesor, id_tienda, situacion, fecha_baja, dia_descanso)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `, [e.id_empleado, e.dni, e.codigo_empleado, e.nombre_completo, e.puesto, e.regimen, e.celular, e.correo_asesor, e.id_tienda, e.situacion, e.fecha_baja || null, e.dia_descanso || null]);
     }
     await client.query(`SELECT setval('empleados_id_empleado_seq', (SELECT MAX(id_empleado) FROM empleados))`);
 
@@ -163,6 +175,18 @@ async function syncToPg() {
     }
     if (horarios.length > 0) {
       await client.query(`SELECT setval('horarios_diario_id_registro_seq', (SELECT MAX(id_registro) FROM horarios_diario))`);
+    }
+
+    // 6b. Read and Insert Horario Turnos
+    const turnos = await new Promise((res, rej) => sqliteDb.all("SELECT * FROM horario_turnos ORDER BY id_turno ASC", (e, r) => e ? rej(e) : res(r)));
+    for (const t of turnos) {
+      await client.query(`
+        INSERT INTO horario_turnos (id_turno, id_empleado, fecha, hora_inicio, hora_fin, usuario_modificacion)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [t.id_turno, t.id_empleado, t.fecha, t.hora_inicio, t.hora_fin, t.usuario_modificacion]);
+    }
+    if (turnos.length > 0) {
+      await client.query(`SELECT setval('horario_turnos_id_turno_seq', (SELECT MAX(id_turno) FROM horario_turnos))`);
     }
 
     // 7. Read and Insert Horario Periodos
@@ -196,7 +220,8 @@ async function syncToPg() {
     console.log(`  - Usuarios: ${users.length}`);
     console.log(`  - Empleados: ${emps.length}`);
     console.log(`  - Registros Asistencia: ${records.length}`);
-    console.log(`  - Registros Horarios: ${horarios.length}`);
+    console.log(`  - Registros Horarios (legado): ${horarios.length}`);
+    console.log(`  - Turnos de Horario: ${turnos.length}`);
     console.log(`  - Periodos de Horario: ${periodos.length}`);
     console.log(`  - Solicitudes de Horario: ${solicitudes.length}`);
 

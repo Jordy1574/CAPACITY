@@ -98,6 +98,13 @@ Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad
 - `POST /api/empleados`: Crear un nuevo colaborador.
 - `PUT /api/empleados/:id`: Actualizar datos o dar de baja a un colaborador.
 
+### 👤 Usuarios (`/api/usuarios`) — Solo ADMIN
+- `GET /api/usuarios`: Lista todos los usuarios (sin exponer la contraseña).
+- `POST /api/usuarios`: Crea un usuario (`email`, `password`, `rol`, `id_tienda` si el rol es `TIENDA`).
+- `PUT /api/usuarios/:id`: Cambia el rol y/o la tienda asignada.
+- `POST /api/usuarios/:id/reset-password`: Restablece la contraseña de un usuario.
+- `POST /api/usuarios/:id/toggle-activo`: Activa o desactiva una cuenta (bloquea el login sin eliminar el usuario ni su historial).
+
 ### 📅 Horarios (`/api/horarios`)
 - `GET /api/horarios?mes=YYYY-MM&id_tienda=X`: Obtener matriz de horarios y estado del período (`BORRADOR` / `ENVIADO`).
 - `PUT /api/horarios/bulk-update`: Actualizar turnos de horarios (bloqueado si el período está `ENVIADO` para rol `TIENDA`).
@@ -172,18 +179,32 @@ Para sincronizar automáticamente Power BI o Excel con los datos de Capacity:
 │   ├── sync_to_postgres.js    # Sincronizador automatizado SQLite -> PostgreSQL
 │   └── import_real_data.py    # Script de importación desde plantillas Excel
 ├── src/
-│   ├── app.js                 # Punto de entrada de la aplicación Fastify
+│   ├── app.js                 # Punto de entrada Fastify: plugins, error handler global, registro de rutas
 │   ├── config/
 │   │   └── db.js              # Controlador dual de base de datos (PostgreSQL / SQLite)
+│   ├── errors/
+│   │   └── AppError.js        # Error tipado con statusCode, usado por los servicios
 │   ├── middleware/
-│   │   └── auth.js            # Autenticación JWT y validación de API Key para exportación
-│   ├── routes/
-│   │   ├── auth.js            # Rutas de autenticación (/api/auth)
-│   │   ├── capacity.js        # Rutas de capacity y colaboradores (/api/capacity)
-│   │   └── horarios.js        # Rutas de gestión de horarios y permisos (/api/horarios)
+│   │   ├── auth.js            # Autenticación JWT y validación de API Key para exportación
+│   │   └── roles.js           # ROLES_ADMIN + requireRole(...roles) reutilizable
+│   ├── repositories/          # Acceso a datos: todo el SQL vive aquí (usa config/db.js#query)
+│   │   ├── tiendasRepository.js
+│   │   ├── usuariosRepository.js
+│   │   ├── empleadosRepository.js
+│   │   ├── capacityRepository.js
+│   │   └── horariosRepository.js
+│   ├── services/               # Reglas de negocio y RLS por tienda/rol
+│   │   ├── authService.js
+│   │   ├── usuariosService.js
+│   │   ├── capacityService.js
+│   │   └── horariosService.js
+│   ├── routes/                 # Controladores delgados: validación de esquema + llamada al servicio
+│   │   ├── auth.js             # /api/auth
+│   │   ├── capacity.js         # /api/capacity, /api/tiendas, /api/empleados
+│   │   ├── horarios.js         # /api/horarios
+│   │   └── usuarios.js         # /api/usuarios (gestión de usuarios, solo ADMIN)
 │   ├── utils/
-│   │   ├── dates.js           # Utilidades para cálculo de días en meses
-│   │   └── empleados.js       # Filtros de colaboradores activos / alta rotación
+│   │   └── dates.js            # Utilidades para cálculo de días en meses
 │   └── public/
 │       ├── index.html         # Interfaz principal (Capacity + Horarios + Solicitudes)
 │       ├── login.html         # Pantalla de inicio de sesión

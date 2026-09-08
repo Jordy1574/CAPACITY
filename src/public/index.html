@@ -22,9 +22,31 @@
           <span class="ml-2 px-2.5 py-0.5 text-xs font-bold bg-pink-100 text-[#D81B60] rounded-full uppercase tracking-wider">Capacity</span>
         </div>
         <div class="hidden sm:block h-6 w-px bg-gray-200"></div>
-        <span id="store-title-badge" class="hidden sm:inline-flex text-xs font-bold text-gray-600 bg-gray-100 px-3 py-1 rounded-lg">
-          Cargando tienda...
-        </span>
+        <div class="hidden sm:flex items-center gap-2">
+          <!-- Selector de tienda (vista Capacity) - visible para Admin/Supervisor/RRHH -->
+          <div class="relative">
+            <select
+              id="store-select"
+              onchange="loadCapacityData()"
+              title="Cambiar tienda"
+              class="hidden appearance-none text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-200 pl-3 pr-7 py-1.5 rounded-lg outline-none focus:ring-2 focus:ring-[#D81B60] cursor-pointer transition-colors"
+            ></select>
+            <svg id="store-select-caret" class="hidden pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </div>
+          <!-- Selector de tienda (vista Horarios) - visible para Admin/Supervisor/RRHH -->
+          <div class="relative">
+            <select
+              id="horario-store-select"
+              onchange="loadHorarioWeek()"
+              title="Cambiar tienda"
+              class="hidden appearance-none text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-200 pl-3 pr-7 py-1.5 rounded-lg outline-none focus:ring-2 focus:ring-[#D81B60] cursor-pointer transition-colors"
+            ></select>
+            <svg id="horario-store-select-caret" class="hidden pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </div>
+          <span id="store-title-badge" class="text-xs font-bold text-gray-600 bg-gray-100 px-3 py-1 rounded-lg">
+            Cargando tienda...
+          </span>
+        </div>
       </div>
 
       <!-- User Profile & Session -->
@@ -61,20 +83,31 @@
     </div>
   </header>
 
-  <!-- Tab Navigation: Capacity / Horarios -->
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 pt-5">
-    <div class="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
-      <button id="tab-btn-capacity" onclick="switchView('capacity')" class="tab-btn tab-btn-active px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all">
-        Capacity
-      </button>
-      <button id="tab-btn-horarios" onclick="switchView('horarios')" class="tab-btn px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all">
-        Horarios
-      </button>
-    </div>
-  </div>
+  <!-- App Layout: Sidebar + Content -->
+  <div class="app-layout">
 
-  <!-- Main Content Container -->
-  <main id="view-capacity" class="w-full max-w-[1700px] mx-auto px-4 sm:px-6 pt-6 space-y-6">
+    <!-- Sidebar Navigation (nuevas secciones se agregan aquí) -->
+    <aside class="app-sidebar">
+      <nav>
+        <a href="/capacity" id="nav-link-capacity" onclick="return handleNavClick(event, 'capacity')" class="sidebar-link sidebar-link-active">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+          <span>Capacity</span>
+        </a>
+        <a href="/horarios" id="nav-link-horarios" onclick="return handleNavClick(event, 'horarios')" class="sidebar-link">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span>Horarios</span>
+        </a>
+        <a href="/usuarios" id="nav-link-usuarios" onclick="return handleNavClick(event, 'usuarios')" class="sidebar-link hidden">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          <span>Usuarios</span>
+        </a>
+      </nav>
+    </aside>
+
+    <div class="app-content">
+
+    <!-- Main Content Container -->
+    <main id="view-capacity" class="w-full px-4 sm:px-6 pt-6 space-y-6">
 
     <!-- Control Bar & Filters -->
     <div class="antigravity-card p-5 bg-white flex flex-col md:flex-row items-center justify-between gap-4">
@@ -108,18 +141,6 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           <span>Agregar Personal</span>
         </button>
-      </div>
-
-      <!-- Selector de Tienda (Para Admins/Supervisores) -->
-      <div id="store-selector-container" class="hidden items-center gap-3 w-full md:w-auto">
-        <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Tienda:</label>
-        <select 
-          id="store-select" 
-          onchange="loadCapacityData()" 
-          class="bg-gray-100 border border-gray-200 text-xs font-bold text-gray-900 px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-[#D81B60]"
-        >
-          <option value="1">JESUS MARIA (ALMA31)</option>
-        </select>
       </div>
 
       <!-- Legend & Instructions -->
@@ -222,26 +243,20 @@
   </main>
 
   <!-- Horarios View -->
-  <main id="view-horarios" class="hidden w-full max-w-[1700px] mx-auto px-4 sm:px-6 pt-6 space-y-6">
+  <main id="view-horarios" class="hidden w-full px-4 sm:px-6 pt-6 space-y-6">
 
     <!-- Control Bar & Filters -->
     <div class="antigravity-card p-5 bg-white flex flex-col md:flex-row items-center justify-between gap-4">
 
       <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
         <div class="flex items-center gap-2">
-          <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Mes:</label>
+          <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Semana:</label>
           <div class="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200">
-            <button onclick="changeHorarioMonth(-1)" class="p-1.5 text-gray-600 hover:text-black hover:bg-white rounded-lg transition-all">
+            <button onclick="changeHorarioWeek(-1)" class="p-1.5 text-gray-600 hover:text-black hover:bg-white rounded-lg transition-all">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </button>
-            <input
-              type="month"
-              id="horario-month-picker"
-              value="2026-09"
-              onchange="loadHorarioData()"
-              class="bg-transparent border-none text-xs font-bold text-gray-900 px-2 outline-none cursor-pointer"
-            >
-            <button onclick="changeHorarioMonth(1)" class="p-1.5 text-gray-600 hover:text-black hover:bg-white rounded-lg transition-all">
+            <span id="horario-week-label" class="text-xs font-bold text-gray-900 px-2 whitespace-nowrap">Cargando...</span>
+            <button onclick="changeHorarioWeek(1)" class="p-1.5 text-gray-600 hover:text-black hover:bg-white rounded-lg transition-all">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </button>
           </div>
@@ -251,17 +266,6 @@
         <span id="horario-estado-badge" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border">
           Cargando...
         </span>
-      </div>
-
-      <!-- Selector de Tienda (Para Admins/Supervisores) -->
-      <div id="horario-store-selector-container" class="hidden items-center gap-3 w-full md:w-auto">
-        <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Tienda:</label>
-        <select
-          id="horario-store-select"
-          onchange="loadHorarioData()"
-          class="bg-gray-100 border border-gray-200 text-xs font-bold text-gray-900 px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-[#D81B60]"
-        >
-        </select>
       </div>
 
       <!-- Acciones de Envío / Permiso -->
@@ -296,20 +300,9 @@
       </div>
 
       <!-- Legend & Instructions -->
-      <div class="flex items-center gap-2 text-xs font-medium text-gray-600 overflow-x-auto w-full py-1">
-        <span class="text-gray-400 font-bold uppercase text-[10px]">Valores Clic:</span>
-        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-full text-[11px]">
-          <span>1.0</span> <span class="font-normal text-gray-500">T. Completo</span>
-        </span>
-        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-half text-[11px]">
-          <span>0.5</span> <span class="font-normal text-gray-500">Medio Turno</span>
-        </span>
-        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-zero text-[11px]">
-          <span>0.0</span> <span class="font-normal text-gray-500">Descanso/Falta</span>
-        </span>
-        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-null text-[11px]">
-          <span>-</span> <span class="font-normal text-gray-400">Vacío</span>
-        </span>
+      <div class="flex items-center gap-2 text-xs font-medium text-gray-500 w-full py-1">
+        <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Clic en una celda para editar el turno del día. Pasa el cursor para ver el detalle exacto.</span>
       </div>
 
     </div>
@@ -320,10 +313,10 @@
         <table class="w-full text-left border-collapse" id="horario-table">
           <thead class="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-30 shadow-sm">
             <tr id="horario-table-header-row">
-              <th class="p-3 sticky-col-1 border-b border-gray-200 min-w-[210px] bg-gray-50">Colaborador</th>
-              <th class="p-3 sticky-col-2 border-b border-gray-200 min-w-[110px] bg-gray-50 text-center">Código Asesor</th>
-              <th class="p-3 border-b border-gray-200 min-w-[140px] bg-gray-50">Puesto</th>
-              <th class="p-3 border-b border-gray-200 min-w-[80px] text-center bg-gray-50">Régimen</th>
+              <th class="p-2 sticky-col-1 border-b border-gray-200 min-w-[80px] bg-gray-50">Hora</th>
+            </tr>
+            <tr id="horario-table-subheader-row">
+              <th class="p-2 sticky-col-1 border-b border-gray-200 min-w-[80px] bg-gray-50"></th>
             </tr>
           </thead>
           <tbody class="text-xs divide-y divide-gray-100" id="horario-table-body">
@@ -337,7 +330,47 @@
       </div>
     </div>
 
+    <!-- Descansos de la semana -->
+    <div class="antigravity-card bg-white p-4">
+      <h3 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Descansos de la semana</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs" id="horario-descanso-table">
+          <thead>
+            <tr class="text-[10px] font-bold text-gray-500 uppercase border-b border-gray-200">
+              <th class="py-2 pr-4">Colaborador</th>
+              <th class="py-2 pr-4">Día de descanso</th>
+              <th class="py-2 pr-2 text-right">Horas semana</th>
+            </tr>
+          </thead>
+          <tbody id="horario-descanso-body"></tbody>
+        </table>
+      </div>
+    </div>
+
   </main>
+
+  <!-- Usuarios View (Solo ADMIN) -->
+  <main id="view-usuarios" class="hidden w-full px-4 sm:px-6 pt-6 space-y-6">
+
+    <div class="antigravity-card p-5 bg-white flex flex-col md:flex-row items-center justify-between gap-4">
+      <div>
+        <h2 class="font-brand font-bold text-lg text-gray-900">Gestión de Usuarios</h2>
+        <p class="text-xs text-gray-500">Crea usuarios por tienda, asigna roles y administra contraseñas.</p>
+      </div>
+      <button onclick="openUsuarioModal()" class="btn-bissu px-5 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Nuevo Usuario
+      </button>
+    </div>
+
+    <div id="usuarios-list" class="space-y-3">
+      <p class="text-center text-xs text-gray-400 py-8">Cargando usuarios...</p>
+    </div>
+
+    </main>
+
+    </div>
+  </div>
 
   <!-- Sticky Save Bar Floating Action -->
   <div 
@@ -448,6 +481,61 @@
     </div>
   </div>
 
+  <!-- Modal de Confirmación genérico (reemplaza a window.confirm) -->
+  <div id="confirm-modal" class="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="antigravity-card bg-white max-w-sm w-full p-6 space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="p-2 bg-amber-50 text-amber-600 rounded-xl shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+        </div>
+        <h3 class="font-brand font-bold text-base text-gray-900">Confirmar</h3>
+      </div>
+      <p id="confirm-modal-message" class="text-xs text-gray-600 leading-relaxed"></p>
+      <div class="flex items-center justify-end gap-3 pt-1">
+        <button type="button" id="confirm-modal-cancel" class="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-xl">Cancelar</button>
+        <button type="button" id="confirm-modal-accept" class="btn-bissu px-5 py-2 text-xs font-bold uppercase tracking-wider">Aceptar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Editar Turno (Horarios) -->
+  <div id="turno-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="antigravity-card bg-white max-w-md w-full p-6 space-y-5">
+      <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="p-2 bg-pink-50 text-[#D81B60] rounded-xl">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div>
+            <h3 class="font-brand font-bold text-lg text-gray-900">Editar Turno</h3>
+            <p id="turno-modal-subtitle" class="text-xs text-gray-500">Colaborador — Fecha</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeTurnoModal()" class="text-gray-400 hover:text-black">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <form id="turno-modal-form" class="space-y-4">
+        <div id="turno-blocks-container" class="space-y-2">
+          <!-- filas dinámicas de bloques (hora inicio / hora fin) -->
+        </div>
+
+        <div class="pt-1">
+          <button type="button" onclick="addTurnoBlockRow()" class="text-xs font-bold text-[#D81B60] hover:underline flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Agregar Bloque
+          </button>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-1 border-t border-gray-100">
+          <button type="button" onclick="closeTurnoModal()" class="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-xl">Cancelar</button>
+          <button type="submit" class="btn-bissu px-5 py-2 text-xs font-bold uppercase tracking-wider">Guardar Turno</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal Ficha de Colaborador (Agregar / Editar) -->
   <div id="employee-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden items-center justify-center p-4">
     <div class="antigravity-card bg-white max-w-lg w-full p-6 space-y-5">
@@ -539,6 +627,87 @@
         <div class="flex items-center justify-end gap-3 pt-3">
           <button type="button" onclick="closeEmployeeModal()" class="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-xl">Cancelar</button>
           <button type="submit" id="btn-save-emp" class="btn-bissu px-5 py-2 text-xs font-bold uppercase tracking-wider">Guardar Colaborador</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Usuario (Crear / Editar) -->
+  <div id="usuario-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="antigravity-card bg-white max-w-lg w-full p-6 space-y-5">
+      <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="p-2 bg-pink-50 text-[#D81B60] rounded-xl">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          </div>
+          <div>
+            <h3 class="font-brand font-bold text-lg text-gray-900" id="usr-modal-title">Nuevo Usuario</h3>
+            <p class="text-xs text-gray-500">Define el correo, rol y tienda asignada.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeUsuarioModal()" class="text-gray-400 hover:text-black">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <form id="usuario-form" class="space-y-4">
+        <input type="hidden" id="usr-id">
+
+        <div>
+          <label for="usr-email" class="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Correo Electrónico *</label>
+          <input type="email" id="usr-email" required placeholder="usuario@bissu.pe" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
+        </div>
+
+        <div id="usr-password-box">
+          <label for="usr-password" class="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Contraseña *</label>
+          <input type="text" id="usr-password" minlength="6" placeholder="Mínimo 6 caracteres" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="usr-rol" class="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Rol</label>
+            <select id="usr-rol" onchange="toggleUsuarioTiendaField()" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
+              <option value="TIENDA">TIENDA</option>
+              <option value="SUPERVISOR">SUPERVISOR</option>
+              <option value="RRHH">RRHH</option>
+              <option value="ADMIN">ADMIN</option>
+            </select>
+          </div>
+
+          <div id="usr-tienda-box">
+            <label for="usr-tienda" class="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Tienda</label>
+            <select id="usr-tienda" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
+              <!-- Se carga dinámicamente -->
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-3">
+          <button type="button" onclick="closeUsuarioModal()" class="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-xl">Cancelar</button>
+          <button type="submit" class="btn-bissu px-5 py-2 text-xs font-bold uppercase tracking-wider">Guardar Usuario</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Resetear Contraseña -->
+  <div id="reset-password-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="antigravity-card bg-white max-w-sm w-full p-6 space-y-5">
+      <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+        <h3 class="font-brand font-bold text-lg text-gray-900">Restablecer Contraseña</h3>
+        <button type="button" onclick="closeResetPasswordModal()" class="text-gray-400 hover:text-black">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="reset-password-form" class="space-y-4">
+        <input type="hidden" id="reset-usr-id">
+        <div>
+          <label for="reset-usr-password" class="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Nueva Contraseña *</label>
+          <input type="text" id="reset-usr-password" required minlength="6" placeholder="Mínimo 6 caracteres" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
+        </div>
+        <div class="flex items-center justify-end gap-3 pt-3">
+          <button type="button" onclick="closeResetPasswordModal()" class="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-xl">Cancelar</button>
+          <button type="submit" class="btn-bissu px-5 py-2 text-xs font-bold uppercase tracking-wider">Actualizar Contraseña</button>
         </div>
       </form>
     </div>

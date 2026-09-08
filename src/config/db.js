@@ -55,6 +55,7 @@ function initSqliteSchemaAndSeed() {
         password_hash TEXT NOT NULL,
         id_tienda INTEGER NULL,
         rol TEXT CHECK (rol IN ('TIENDA', 'SUPERVISOR', 'RRHH', 'ADMIN')) DEFAULT 'TIENDA',
+        activo INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (id_tienda) REFERENCES tiendas(id_tienda) ON DELETE SET NULL
       );
     `);
@@ -72,6 +73,7 @@ function initSqliteSchemaAndSeed() {
         id_tienda INTEGER NOT NULL,
         situacion TEXT DEFAULT 'ACTIVO',
         fecha_baja TEXT,
+        dia_descanso TEXT,
         FOREIGN KEY (id_tienda) REFERENCES tiendas(id_tienda) ON DELETE CASCADE
       );
     `);
@@ -81,6 +83,8 @@ function initSqliteSchemaAndSeed() {
     sqliteDb.run(`ALTER TABLE empleados ADD COLUMN celular TEXT`, err => {});
     sqliteDb.run(`ALTER TABLE empleados ADD COLUMN correo_asesor TEXT`, err => {});
     sqliteDb.run(`ALTER TABLE empleados ADD COLUMN fecha_baja TEXT`, err => {});
+    sqliteDb.run(`ALTER TABLE empleados ADD COLUMN dia_descanso TEXT`, err => {});
+    sqliteDb.run(`ALTER TABLE usuarios ADD COLUMN activo INTEGER NOT NULL DEFAULT 1`, err => {});
 
     sqliteDb.run(`
       CREATE TABLE IF NOT EXISTS capacity_diario (
@@ -109,6 +113,21 @@ function initSqliteSchemaAndSeed() {
         FOREIGN KEY (usuario_modificacion) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
       );
     `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS horario_turnos (
+        id_turno INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_empleado INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        hora_inicio TEXT NOT NULL,
+        hora_fin TEXT NOT NULL,
+        usuario_modificacion INTEGER,
+        fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (id_empleado) REFERENCES empleados(id_empleado) ON DELETE CASCADE,
+        FOREIGN KEY (usuario_modificacion) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+      );
+    `);
+    sqliteDb.run(`CREATE INDEX IF NOT EXISTS idx_horario_turnos_empleado_fecha ON horario_turnos(id_empleado, fecha)`);
 
     sqliteDb.run(`
       CREATE TABLE IF NOT EXISTS horario_periodos (
