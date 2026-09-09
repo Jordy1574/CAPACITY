@@ -48,13 +48,15 @@ export default function CapacityPage() {
     setPendingChanges({});
   }, [mes, storeId]);
 
-  const titleBadge = useMemo(() => {
-    if (!data?.tienda) return 'Cargando tienda...';
+  const storeName = data?.tienda
+    ? `${data.tienda.nombre_tienda} (${data.tienda.codigo_almacen})`
+    : 'Cargando tienda...';
+
+  const plazasBadge = useMemo(() => {
+    if (!data?.tienda) return '';
     const rango = data.tienda.rango_codigos || '0100-0109';
-    return isAdminLike
-      ? `Plazas: ${rango}`
-      : `${data.tienda.nombre_tienda} (${data.tienda.codigo_almacen}) - Plazas: ${rango}`;
-  }, [data, isAdminLike]);
+    return `Plazas: ${rango}`;
+  }, [data]);
 
   const handleCellClick = (idEmpleado, fecha, initialVal, regimen) => {
     const key = `${idEmpleado}_${fecha}`;
@@ -103,6 +105,20 @@ export default function CapacityPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 pt-6 space-y-6">
+      <div
+        className="rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+        style={{ background: 'linear-gradient(to right, #D81B60, #AD1457)' }}
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl leading-none">🏬</span>
+          <div>
+            <p className="font-brand font-black text-lg text-white uppercase tracking-wide leading-tight">{storeName}</p>
+            {plazasBadge && <p className="text-[11px] text-pink-100 font-semibold">{plazasBadge}</p>}
+          </div>
+        </div>
+        {isAdminLike && tiendas && <StoreSelector tiendas={tiendas} value={storeId} onChange={(v) => setStoreId(v)} />}
+      </div>
+
       <div className="antigravity-card p-5 bg-white flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <div className="flex items-center gap-2">
@@ -126,9 +142,6 @@ export default function CapacityPage() {
               </button>
             </div>
           </div>
-
-          {isAdminLike && tiendas && <StoreSelector tiendas={tiendas} value={storeId} onChange={(v) => setStoreId(v)} />}
-          <span className="text-xs font-bold text-gray-600 bg-gray-100 px-3 py-1 rounded-lg">{titleBadge}</span>
 
           <button onClick={() => setEmployeeModal({ open: true, employee: null })} className="btn-bissu px-3.5 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
