@@ -266,7 +266,7 @@ export default function HorariosPage() {
       </div>
 
       {solicitud ? (
-        <PendingBanner solicitud={solicitud} canRevisar={isAdminLike} onRevisar={() => setReviewOpen(true)} />
+        <PendingBanner solicitud={solicitud} canRevisar={isAdminLike} hayOficial={Boolean(confirmadoPor)} onRevisar={() => setReviewOpen(true)} />
       ) : (
         confirmadoPor && <OfficialBanner />
       )}

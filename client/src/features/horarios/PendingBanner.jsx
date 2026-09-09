@@ -1,4 +1,4 @@
-export default function PendingBanner({ solicitud, onRevisar, canRevisar }) {
+export default function PendingBanner({ solicitud, onRevisar, canRevisar, hayOficial }) {
   if (!solicitud) return null;
 
   const fecha = new Date(solicitud.fecha_solicitud).toLocaleString('es-PE');
@@ -13,6 +13,11 @@ export default function PendingBanner({ solicitud, onRevisar, canRevisar }) {
             Enviado el {fecha} {solicitud.solicitado_por_email ? `por ${solicitud.solicitado_por_email}` : ''}
             {solicitud.motivo ? ` — Motivo: ${solicitud.motivo}` : ''}
           </p>
+          {hayOficial && (
+            <p className="text-[11px] text-amber-600 font-semibold mt-0.5">
+              El horario oficial que se ve abajo sigue vigente y no cambiará hasta que esta solicitud sea aprobada.
+            </p>
+          )}
         </div>
       </div>
       {canRevisar && (

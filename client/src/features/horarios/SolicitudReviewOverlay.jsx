@@ -1,9 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { resolverSolicitud } from '../../api/horarios';
 import { useToast } from '../../hooks/useToast';
 import HorarioGrid from './HorarioGrid';
 import DescansoSummary from './DescansoSummary';
 import TurnoModal from './TurnoModal';
+
+// El horario oficial no se toca visualmente en la grilla principal — esta
+// vista de revisión es la única que muestra el oficial con los cambios
+// propuestos superpuestos, para que el admin pueda ver exactamente qué se
+// aprobaría.
+function buildBaseEmpleados(empleados, solicitud) {
+  if (!solicitud) return empleados;
+  const cambiosMap = {};
+  (solicitud.cambios || []).forEach((c) => {
+    if (!cambiosMap[c.id_empleado]) cambiosMap[c.id_empleado] = {};
+    cambiosMap[c.id_empleado][c.fecha] = c.turnos;
+  });
+  return empleados.map((emp) => {
+    const overrides = cambiosMap[emp.id_empleado];
+    if (!overrides) return emp;
+    return { ...emp, dias: { ...emp.dias, ...overrides } };
+  });
+}
 
 // Combina los turnos originales de la solicitud con las ediciones que el
 // admin haya hecho durante la revisión (estas últimas ganan), para mandar el
@@ -29,6 +47,8 @@ export default function SolicitudReviewOverlay({ open, weekDates, empleados, sol
   useEffect(() => {
     if (open) setReviewChanges({});
   }, [open, solicitud?.id_solicitud]);
+
+  const baseEmpleados = useMemo(() => buildBaseEmpleados(empleados, solicitud), [empleados, solicitud]);
 
   if (!open || !solicitud) return null;
 
@@ -111,8 +131,8 @@ export default function SolicitudReviewOverlay({ open, weekDates, empleados, sol
           </div>
         </div>
 
-        <HorarioGrid weekDates={weekDates} empleados={empleados} pendingChanges={reviewChanges} onCellClick={handleCellClick} />
-        <DescansoSummary weekDates={weekDates} empleados={empleados} pendingChanges={reviewChanges} onChangeDiaDescanso={onChangeDiaDescanso} />
+        <HorarioGrid weekDates={weekDates} empleados={baseEmpleados} pendingChanges={reviewChanges} onCellClick={handleCellClick} />
+        <DescansoSummary weekDates={weekDates} empleados={baseEmpleados} pendingChanges={reviewChanges} onChangeDiaDescanso={onChangeDiaDescanso} />
       </div>
 
       <TurnoModal

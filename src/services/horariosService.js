@@ -54,14 +54,9 @@ async function getHorarioSemana(user, semanaInicioInput, queryIdTienda) {
   const periodo = await horariosRepository.getSemana(idTienda, semanaInicio);
   const solicitudPendiente = await horariosRepository.getSolicitudPendiente(idTienda, semanaInicio);
 
-  const cambiosMap = {};
   let solicitudCambios = [];
   if (solicitudPendiente) {
     solicitudCambios = await horariosRepository.getCambiosDeSolicitud(solicitudPendiente.id_solicitud);
-    solicitudCambios.forEach(c => {
-      if (!cambiosMap[c.id_empleado]) cambiosMap[c.id_empleado] = {};
-      cambiosMap[c.id_empleado][c.fecha] = c.turnos;
-    });
   }
 
   const solicitudInfo = solicitudPendiente
@@ -88,11 +83,13 @@ async function getHorarioSemana(user, semanaInicioInput, queryIdTienda) {
     turnosMap[rec.id_empleado][rec.fecha].push({ hora_inicio: rec.hora_inicio, hora_fin: rec.hora_fin });
   });
 
+  // El horario oficial se muestra siempre tal cual está guardado, sin
+  // mezclar los cambios propuestos por una solicitud pendiente — esta debe
+  // verse aparte (banner + overlay de revisión) hasta que se apruebe.
   const empleadosConDias = empleados.map(emp => {
     const diasObj = {};
     weekDates.forEach(fecha => {
-      const propuesto = cambiosMap[emp.id_empleado]?.[fecha];
-      diasObj[fecha] = propuesto !== undefined ? propuesto : (turnosMap[emp.id_empleado]?.[fecha] ?? []);
+      diasObj[fecha] = turnosMap[emp.id_empleado]?.[fecha] ?? [];
     });
     return { ...emp, dias: diasObj };
   });
