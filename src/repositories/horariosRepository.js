@@ -5,8 +5,8 @@ async function getSemana(idTienda, semanaInicio) {
   return rows[0] || { id_tienda: idTienda, semana_inicio: semanaInicio, confirmado_por: null, fecha_confirmacion: null };
 }
 
-function marcarConfirmado(idTienda, semanaInicio, idUsuario) {
-  return query(
+function marcarConfirmado(idTienda, semanaInicio, idUsuario, queryFn = query) {
+  return queryFn(
     `INSERT INTO horario_semanas (id_tienda, semana_inicio, confirmado_por, fecha_confirmacion)
      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
      ON CONFLICT (id_tienda, semana_inicio) DO UPDATE SET confirmado_por = $4, fecha_confirmacion = CURRENT_TIMESTAMP`,
@@ -26,12 +26,12 @@ function findTurnosForFechas(fechas, empIds) {
   return query(sql, [...fechas, ...empIds]);
 }
 
-function deleteTurnosForDia(idEmpleado, fecha) {
-  return query('DELETE FROM horario_turnos WHERE id_empleado = $1 AND CAST(fecha AS TEXT) LIKE $2', [idEmpleado, `${fecha}%`]);
+function deleteTurnosForDia(idEmpleado, fecha, queryFn = query) {
+  return queryFn('DELETE FROM horario_turnos WHERE id_empleado = $1 AND CAST(fecha AS TEXT) LIKE $2', [idEmpleado, `${fecha}%`]);
 }
 
-function insertTurno(idEmpleado, fecha, horaInicio, horaFin, idUsuario) {
-  return query(
+function insertTurno(idEmpleado, fecha, horaInicio, horaFin, idUsuario, queryFn = query) {
+  return queryFn(
     'INSERT INTO horario_turnos (id_empleado, fecha, hora_inicio, hora_fin, usuario_modificacion, fecha_actualizacion) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)',
     [idEmpleado, fecha, horaInicio, horaFin, idUsuario]
   );

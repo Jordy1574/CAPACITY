@@ -243,7 +243,42 @@ async function query(sql, params = []) {
   }
 }
 
+// Ejecuta varias escrituras dentro de una sola transacción. En SQLite hay
+// una única conexión compartida para todo el proceso, así que las llamadas
+// secuenciales a query() ya se ejecutan en orden sobre ella — BEGIN/COMMIT
+// alcanzan. En Postgres, pool.query() puede tomar una conexión distinta del
+// pool en cada llamada, así que hace falta reservar un client fijo para que
+// BEGIN/COMMIT y las escrituras intermedias compartan la misma conexión.
+async function withTransaction(fn) {
+  if (dbDriver === 'pg') {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const txQuery = async (sql, params = []) => (await client.query(sql, params)).rows;
+      const result = await fn(txQuery);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  await query('BEGIN');
+  try {
+    const result = await fn(query);
+    await query('COMMIT');
+    return result;
+  } catch (err) {
+    await query('ROLLBACK');
+    throw err;
+  }
+}
+
 module.exports = {
   query,
+  withTransaction,
   dbDriver
 };

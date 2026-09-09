@@ -3,6 +3,7 @@ const empleadosRepository = require('../repositories/empleadosRepository');
 const horariosRepository = require('../repositories/horariosRepository');
 const { getMondayOf, getWeekDates, todayStr } = require('../utils/dates');
 const { ROLES_ADMIN } = require('../middleware/roles');
+const { withTransaction } = require('../config/db');
 const AppError = require('../errors/AppError');
 
 // Usada en lecturas (GET /api/horarios/semana): admins pueden omitir id_tienda, se asume tienda 1 por defecto.
@@ -161,18 +162,20 @@ async function bulkUpdateHorario(user, body) {
   }
 
   let updatedCount = 0;
-  for (const cambio of cambios) {
-    const { id_empleado, fecha, turnos } = cambio;
-    if (!id_empleado || !fecha || !Array.isArray(turnos)) continue;
+  await withTransaction(async (txQuery) => {
+    for (const cambio of cambios) {
+      const { id_empleado, fecha, turnos } = cambio;
+      if (!id_empleado || !fecha || !Array.isArray(turnos)) continue;
 
-    const bloques = validarBloquesTurno(turnos);
+      const bloques = validarBloquesTurno(turnos);
 
-    await horariosRepository.deleteTurnosForDia(id_empleado, fecha);
-    for (const bloque of bloques) {
-      await horariosRepository.insertTurno(id_empleado, fecha, bloque.hora_inicio, bloque.hora_fin, user.id_usuario);
+      await horariosRepository.deleteTurnosForDia(id_empleado, fecha, txQuery);
+      for (const bloque of bloques) {
+        await horariosRepository.insertTurno(id_empleado, fecha, bloque.hora_inicio, bloque.hora_fin, user.id_usuario, txQuery);
+      }
+      updatedCount++;
     }
-    updatedCount++;
-  }
+  });
 
   return { message: 'Horario actualizado correctamente.', registros_actualizados: updatedCount };
 }
@@ -255,15 +258,16 @@ async function resolverSolicitudService(user, idSolicitud, aprobar, comentario, 
       ? cambiosFinales
       : await horariosRepository.getCambiosDeSolicitud(idSolicitud);
 
-    for (const cambio of cambios) {
-      const bloques = validarBloquesTurno(cambio.turnos || []);
-      await horariosRepository.deleteTurnosForDia(cambio.id_empleado, cambio.fecha);
-      for (const bloque of bloques) {
-        await horariosRepository.insertTurno(cambio.id_empleado, cambio.fecha, bloque.hora_inicio, bloque.hora_fin, user.id_usuario);
+    await withTransaction(async (txQuery) => {
+      for (const cambio of cambios) {
+        const bloques = validarBloquesTurno(cambio.turnos || []);
+        await horariosRepository.deleteTurnosForDia(cambio.id_empleado, cambio.fecha, txQuery);
+        for (const bloque of bloques) {
+          await horariosRepository.insertTurno(cambio.id_empleado, cambio.fecha, bloque.hora_inicio, bloque.hora_fin, user.id_usuario, txQuery);
+        }
       }
-    }
-
-    await horariosRepository.marcarConfirmado(solicitud.id_tienda, solicitud.semana_inicio, user.id_usuario);
+      await horariosRepository.marcarConfirmado(solicitud.id_tienda, solicitud.semana_inicio, user.id_usuario, txQuery);
+    });
   }
 
   return {

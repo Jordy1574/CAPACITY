@@ -14,11 +14,11 @@ function findRecordsForEmpleados(mes, empIds) {
   return query(sql, [`${mes}%`, ...empIds]);
 }
 
-function deleteRecord(idEmpleado, fecha) {
-  return query('DELETE FROM capacity_diario WHERE id_empleado = $1 AND CAST(fecha AS TEXT) LIKE $2', [idEmpleado, `${fecha}%`]);
+function deleteRecord(idEmpleado, fecha, queryFn = query) {
+  return queryFn('DELETE FROM capacity_diario WHERE id_empleado = $1 AND CAST(fecha AS TEXT) LIKE $2', [idEmpleado, `${fecha}%`]);
 }
 
-function upsertRecord(idEmpleado, fecha, valor, idUsuario) {
+function upsertRecord(idEmpleado, fecha, valor, idUsuario, queryFn = query) {
   if (dbDriver === 'pg') {
     const upsertPg = `
       INSERT INTO capacity_diario (id_empleado, fecha, valor, usuario_modificacion, fecha_actualizacion)
@@ -26,7 +26,7 @@ function upsertRecord(idEmpleado, fecha, valor, idUsuario) {
       ON CONFLICT (id_empleado, fecha)
       DO UPDATE SET valor = EXCLUDED.valor, usuario_modificacion = EXCLUDED.usuario_modificacion, fecha_actualizacion = NOW()
     `;
-    return query(upsertPg, [idEmpleado, fecha, valor, idUsuario]);
+    return queryFn(upsertPg, [idEmpleado, fecha, valor, idUsuario]);
   }
   const upsertSqlite = `
     INSERT INTO capacity_diario (id_empleado, fecha, valor, usuario_modificacion, fecha_actualizacion)
@@ -34,7 +34,7 @@ function upsertRecord(idEmpleado, fecha, valor, idUsuario) {
     ON CONFLICT (id_empleado, fecha)
     DO UPDATE SET valor = EXCLUDED.valor, usuario_modificacion = EXCLUDED.usuario_modificacion, fecha_actualizacion = CURRENT_TIMESTAMP
   `;
-  return query(upsertSqlite, [idEmpleado, fecha, valor, idUsuario]);
+  return queryFn(upsertSqlite, [idEmpleado, fecha, valor, idUsuario]);
 }
 
 function findExportRows(mes, idTienda) {

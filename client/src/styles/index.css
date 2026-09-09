@@ -1,4 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+/* Fuentes auto-hospedadas (antes @import a Google Fonts: bloqueaba el
+   render con 3 saltos de red secuenciales — CSS externo -> CSS externo ->
+   woff2 externo — y dependia de conectividad a internet en una app de LAN). */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../assets/fonts/Outfit-variable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../assets/fonts/PlusJakartaSans-variable.woff2') format('woff2');
+}
 
 @tailwind base;
 @tailwind components;

@@ -3,6 +3,7 @@ const empleadosRepository = require('../repositories/empleadosRepository');
 const capacityRepository = require('../repositories/capacityRepository');
 const { getDaysInMonth } = require('../utils/dates');
 const { ROLES_ADMIN } = require('../middleware/roles');
+const { withTransaction } = require('../config/db');
 const AppError = require('../errors/AppError');
 
 function resolveTiendaId(user, queryIdTienda) {
@@ -179,19 +180,21 @@ async function bulkUpdateCapacity(user, body) {
   }
 
   let updatedCount = 0;
-  for (const cambio of cambios) {
-    const { id_empleado, fecha, valor } = cambio;
-    if (!id_empleado || !fecha || valor === undefined) continue;
+  await withTransaction(async (txQuery) => {
+    for (const cambio of cambios) {
+      const { id_empleado, fecha, valor } = cambio;
+      if (!id_empleado || !fecha || valor === undefined) continue;
 
-    if (valor === null) {
-      await capacityRepository.deleteRecord(id_empleado, fecha);
+      if (valor === null) {
+        await capacityRepository.deleteRecord(id_empleado, fecha, txQuery);
+        updatedCount++;
+        continue;
+      }
+
+      await capacityRepository.upsertRecord(id_empleado, fecha, parseFloat(valor), user.id_usuario, txQuery);
       updatedCount++;
-      continue;
     }
-
-    await capacityRepository.upsertRecord(id_empleado, fecha, parseFloat(valor), user.id_usuario);
-    updatedCount++;
-  }
+  });
 
   return { message: 'Registros de capacity actualizados correctamente.', registros_actualizados: updatedCount };
 }

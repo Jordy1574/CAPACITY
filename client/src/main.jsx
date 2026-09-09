@@ -13,7 +13,14 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      refetchOnWindowFocus: false
+      refetchOnWindowFocus: false,
+      // Sin esto, cada vez que se vuelve a montar una pantalla (por ejemplo
+      // al navegar Capacity -> Horarios -> Capacity) React Query la trata
+      // como "stale" y dispara un fetch nuevo aunque los datos tengan
+      // segundos de antiguedad, sintiendose lento al navegar. Las mutaciones
+      // (guardar cambios, aprobar solicitud, etc.) igual invalidan la query
+      // explicitamente, asi que esto no muestra datos obsoletos tras editar.
+      staleTime: 30_000
     }
   }
 });

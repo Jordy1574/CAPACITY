@@ -24,6 +24,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 const JWT_SECRET = process.env.JWT_SECRET || 'bissu_capacity_secret_key_2026_super_secure';
 
 // Registrar plugins
+fastify.register(require('@fastify/compress'), {
+  global: true,
+  encodings: ['br', 'gzip']
+});
+
 fastify.register(require('@fastify/cors'), {
   origin: true,
   credentials: true
@@ -37,7 +42,15 @@ const DIST_DIR = path.join(__dirname, '../dist');
 
 fastify.register(require('@fastify/static'), {
   root: DIST_DIR,
-  prefix: '/'
+  prefix: '/',
+  // Los archivos dentro de /assets llevan hash de contenido en el nombre
+  // (lo pone Vite) — son seguros de cachear "para siempre" en el navegador,
+  // ya que cualquier cambio de contenido genera un nombre de archivo nuevo.
+  setHeaders: (res, filePath) => {
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
 });
 
 // Registrar rutas
