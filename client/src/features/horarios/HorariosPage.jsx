@@ -181,7 +181,8 @@ export default function HorariosPage() {
   const handleRevisarDesdeModal = (s) => {
     setSolicitudesOpen(false);
     setStoreId(s.id_tienda);
-    setWeekStart(s.semana_inicio);
+    const cleanSemana = s.semana_inicio ? String(s.semana_inicio).split('T')[0] : weekStart;
+    setWeekStart(cleanSemana);
     setReviewOpen(true);
   };
 

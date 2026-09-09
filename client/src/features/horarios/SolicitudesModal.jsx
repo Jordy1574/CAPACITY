@@ -49,7 +49,7 @@ export default function SolicitudesModal({ open, onClose, onRevisar }) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-gray-900">
-                    {s.nombre_tienda} ({s.codigo_almacen}) — semana del {s.semana_inicio}
+                    {s.nombre_tienda} ({s.codigo_almacen}) — semana del {s.semana_inicio ? String(s.semana_inicio).split('T')[0] : ''}
                   </p>
                   <p className="text-[10px] text-gray-400">
                     Solicitado por {s.solicitado_por_email || '—'} el {new Date(s.fecha_solicitud).toLocaleString('es-PE')}

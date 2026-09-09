@@ -13,7 +13,10 @@ function getDaysInMonth(yearMonthStr) {
 }
 
 function addDaysToDateStr(dateStr, days) {
-  const d = new Date(`${dateStr}T00:00:00`);
+  if (!dateStr) return '';
+  const cleanStr = String(dateStr).split('T')[0];
+  const d = new Date(`${cleanStr}T00:00:00`);
+  if (isNaN(d.getTime())) return cleanStr;
   d.setDate(d.getDate() + days);
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -23,14 +26,20 @@ function addDaysToDateStr(dateStr, days) {
 
 // Devuelve el lunes de la semana que contiene dateStr.
 function getMondayOf(dateStr) {
-  const day = new Date(`${dateStr}T00:00:00`).getDay(); // 0=domingo ... 6=sábado
+  if (!dateStr) return '';
+  const cleanStr = String(dateStr).split('T')[0];
+  const d = new Date(`${cleanStr}T00:00:00`);
+  if (isNaN(d.getTime())) return cleanStr;
+  const day = d.getDay(); // 0=domingo ... 6=sábado
   const diffToMonday = day === 0 ? -6 : 1 - day;
-  return addDaysToDateStr(dateStr, diffToMonday);
+  return addDaysToDateStr(cleanStr, diffToMonday);
 }
 
 // Las 7 fechas (lunes a domingo) de la semana que empieza en weekStartStr.
 function getWeekDates(weekStartStr) {
-  return Array.from({ length: 7 }, (_, i) => addDaysToDateStr(weekStartStr, i));
+  if (!weekStartStr) return [];
+  const cleanStr = String(weekStartStr).split('T')[0];
+  return Array.from({ length: 7 }, (_, i) => addDaysToDateStr(cleanStr, i));
 }
 
 function todayStr() {

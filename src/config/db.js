@@ -12,7 +12,10 @@ let sqliteDb = null;
 const databaseUrl = process.env.DATABASE_URL;
 
 if (databaseUrl && databaseUrl.trim() !== '') {
-  const { Pool } = require('pg');
+  const { Pool, types } = require('pg');
+  // Forzar que el tipo DATE (OID 1082) se devuelva como string 'YYYY-MM-DD', igual que SQLite
+  types.setTypeParser(1082, (val) => val);
+
   pool = new Pool({
     connectionString: databaseUrl,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false

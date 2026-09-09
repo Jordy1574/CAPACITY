@@ -1,5 +1,8 @@
 export function addDaysToDateStr(dateStr, days) {
-  const d = new Date(`${dateStr}T00:00:00`);
+  if (!dateStr) return '';
+  const cleanStr = String(dateStr).split('T')[0];
+  const d = new Date(`${cleanStr}T00:00:00`);
+  if (isNaN(d.getTime())) return cleanStr;
   d.setDate(d.getDate() + days);
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -9,19 +12,30 @@ export function addDaysToDateStr(dateStr, days) {
 
 // Devuelve el lunes de la semana que contiene dateStr.
 export function getMondayOf(dateStr) {
-  const day = new Date(`${dateStr}T00:00:00`).getDay(); // 0=domingo ... 6=sábado
+  if (!dateStr) return '';
+  const cleanStr = String(dateStr).split('T')[0];
+  const d = new Date(`${cleanStr}T00:00:00`);
+  if (isNaN(d.getTime())) return cleanStr;
+  const day = d.getDay(); // 0=domingo ... 6=sábado
   const diffToMonday = day === 0 ? -6 : 1 - day;
-  return addDaysToDateStr(dateStr, diffToMonday);
+  return addDaysToDateStr(cleanStr, diffToMonday);
 }
 
 // Las 7 fechas (lunes a domingo) de la semana que empieza en weekStartStr.
 export function getWeekDates(weekStartStr) {
-  return Array.from({ length: 7 }, (_, i) => addDaysToDateStr(weekStartStr, i));
+  if (!weekStartStr) return [];
+  const cleanStr = String(weekStartStr).split('T')[0];
+  return Array.from({ length: 7 }, (_, i) => addDaysToDateStr(cleanStr, i));
 }
 
 export function formatWeekLabel(weekDates) {
-  const start = new Date(`${weekDates[0]}T00:00:00`);
-  const end = new Date(`${weekDates[6]}T00:00:00`);
+  if (!weekDates || !weekDates[0] || !weekDates[6]) return '';
+  const startStr = String(weekDates[0]).split('T')[0];
+  const endStr = String(weekDates[6]).split('T')[0];
+  const start = new Date(`${startStr}T00:00:00`);
+  const end = new Date(`${endStr}T00:00:00`);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return '';
 
   if (start.getMonth() === end.getMonth()) {
     const mesFmt = start.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
