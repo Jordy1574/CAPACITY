@@ -4,7 +4,7 @@ import { useTiendas } from '../../api/useTiendas';
 import { useToast } from '../../hooks/useToast';
 import { useConfirm } from '../../hooks/useConfirm';
 import { ROLES_ADMIN } from '../../lib/constants';
-import StoreSelector from '../../components/StoreSelector';
+import StoreHeaderBanner from '../../components/StoreHeaderBanner';
 import SaveBar from '../../components/SaveBar';
 import { bulkUpdateHorarios, crearSolicitud, updateDiaDescanso as apiUpdateDiaDescanso } from '../../api/horarios';
 import { addDaysToDateStr, getMondayOf, getWeekDates, formatWeekLabel } from './dateUtils';
@@ -198,6 +198,14 @@ export default function HorariosPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 pt-6 space-y-6">
+      <StoreHeaderBanner
+        tienda={data?.tienda}
+        showSelector={isAdminLike}
+        tiendas={tiendas}
+        storeId={storeId}
+        onChangeStore={(v) => setStoreId(v)}
+      />
+
       <div className="antigravity-card p-5 bg-white flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <div className="flex items-center gap-2">
@@ -216,8 +224,6 @@ export default function HorariosPage() {
               </button>
             </div>
           </div>
-
-          {isAdminLike && tiendas && <StoreSelector tiendas={tiendas} value={storeId} onChange={(v) => setStoreId(v)} />}
 
           {smallBadge && <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border ${smallBadge.cls}`}>{smallBadge.text}</span>}
         </div>

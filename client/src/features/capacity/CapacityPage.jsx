@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { useTiendas } from '../../api/useTiendas';
 import { bulkUpdateCapacity, createEmpleado, updateEmpleado } from '../../api/capacity';
 import { useToast } from '../../hooks/useToast';
 import { ROLES_ADMIN } from '../../lib/constants';
-import StoreSelector from '../../components/StoreSelector';
+import StoreHeaderBanner from '../../components/StoreHeaderBanner';
 import SaveBar from '../../components/SaveBar';
 import { useCapacityData, useInvalidateCapacity } from './useCapacityData';
 import { cycleCellValue } from './cellCycle';
@@ -47,16 +47,6 @@ export default function CapacityPage() {
   useEffect(() => {
     setPendingChanges({});
   }, [mes, storeId]);
-
-  const storeName = data?.tienda
-    ? `${data.tienda.nombre_tienda} (${data.tienda.codigo_almacen})`
-    : 'Cargando tienda...';
-
-  const plazasBadge = useMemo(() => {
-    if (!data?.tienda) return '';
-    const rango = data.tienda.rango_codigos || '0100-0109';
-    return `Plazas: ${rango}`;
-  }, [data]);
 
   const handleCellClick = (idEmpleado, fecha, initialVal, regimen) => {
     const key = `${idEmpleado}_${fecha}`;
@@ -105,19 +95,13 @@ export default function CapacityPage() {
 
   return (
     <main className="w-full px-4 sm:px-6 pt-6 space-y-6">
-      <div
-        className="rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-        style={{ background: 'linear-gradient(to right, #D81B60, #AD1457)' }}
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-2xl leading-none">🏬</span>
-          <div>
-            <p className="font-brand font-black text-lg text-white uppercase tracking-wide leading-tight">{storeName}</p>
-            {plazasBadge && <p className="text-[11px] text-pink-100 font-semibold">{plazasBadge}</p>}
-          </div>
-        </div>
-        {isAdminLike && tiendas && <StoreSelector tiendas={tiendas} value={storeId} onChange={(v) => setStoreId(v)} />}
-      </div>
+      <StoreHeaderBanner
+        tienda={data?.tienda}
+        showSelector={isAdminLike}
+        tiendas={tiendas}
+        storeId={storeId}
+        onChangeStore={(v) => setStoreId(v)}
+      />
 
       <div className="antigravity-card p-5 bg-white flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
