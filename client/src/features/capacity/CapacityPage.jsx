@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
+import { useSelectedStore } from '../../store/SelectedStoreContext';
 import { useTiendas } from '../../api/useTiendas';
 import { bulkUpdateCapacity, createEmpleado, updateEmpleado } from '../../api/capacity';
 import { useToast } from '../../hooks/useToast';
@@ -27,7 +28,9 @@ export default function CapacityPage() {
   const isAdminLike = ROLES_ADMIN.includes(user.rol);
 
   const [mes, setMes] = useState(DEFAULT_MONTH);
-  const [storeId, setStoreId] = useState(user.rol === 'TIENDA' ? user.id_tienda : null);
+  const { selectedStoreId, setSelectedStoreId } = useSelectedStore();
+  const storeId = user.rol === 'TIENDA' ? user.id_tienda : selectedStoreId;
+  const setStoreId = setSelectedStoreId;
   const [pendingChanges, setPendingChanges] = useState({});
   const [saving, setSaving] = useState(false);
   const [employeeModal, setEmployeeModal] = useState({ open: false, employee: null });

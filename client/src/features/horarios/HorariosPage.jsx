@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
+import { useSelectedStore } from '../../store/SelectedStoreContext';
 import { useTiendas } from '../../api/useTiendas';
 import { useToast } from '../../hooks/useToast';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -36,7 +37,9 @@ export default function HorariosPage() {
   const isAdminLike = ROLES_ADMIN.includes(user.rol);
 
   const [weekStart, setWeekStart] = useState(todayMonday);
-  const [storeId, setStoreId] = useState(user.rol === 'TIENDA' ? user.id_tienda : null);
+  const { selectedStoreId, setSelectedStoreId } = useSelectedStore();
+  const storeId = user.rol === 'TIENDA' ? user.id_tienda : selectedStoreId;
+  const setStoreId = setSelectedStoreId;
   const [pendingChanges, setPendingChanges] = useState({});
   const [saving, setSaving] = useState(false);
   const [turnoModal, setTurnoModal] = useState({ open: false });
