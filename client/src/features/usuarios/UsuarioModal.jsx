@@ -3,7 +3,7 @@ import { useTiendas } from '../../api/useTiendas';
 
 const EMPTY_FORM = { email: '', password: '', rol: 'TIENDA', id_tienda: '' };
 
-export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit }) {
+export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit, defaultRol = 'TIENDA' }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const { data: tiendas } = useTiendas();
 
@@ -12,9 +12,9 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit 
     if (usuario) {
       setForm({ email: usuario.email, password: '', rol: usuario.rol, id_tienda: usuario.id_tienda || '' });
     } else {
-      setForm({ ...EMPTY_FORM, id_tienda: tiendas?.[0]?.id_tienda || '' });
+      setForm({ ...EMPTY_FORM, rol: defaultRol, id_tienda: tiendas?.[0]?.id_tienda || '' });
     }
-  }, [open, usuario, tiendas]);
+  }, [open, usuario, tiendas, defaultRol]);
 
   if (!open) return null;
 
