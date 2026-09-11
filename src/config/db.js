@@ -88,6 +88,22 @@ function initSqliteSchemaAndSeed() {
     sqliteDb.run(`ALTER TABLE empleados ADD COLUMN fecha_baja TEXT`, err => {});
     sqliteDb.run(`ALTER TABLE empleados ADD COLUMN dia_descanso TEXT`, err => {});
     sqliteDb.run(`ALTER TABLE usuarios ADD COLUMN activo INTEGER NOT NULL DEFAULT 1`, err => {});
+    sqliteDb.run(`ALTER TABLE tiendas ADD COLUMN tipo TEXT NOT NULL DEFAULT 'TIENDA'`, err => {});
+
+    // Sedes de Oficina y Logística (sin código de vendedor ni correo
+    // colectivo — cada empleado de estas áreas inicia sesión con su propia
+    // cuenta, a diferencia de una tienda donde hay un único usuario
+    // compartido para toda la sede).
+    sqliteDb.run(`
+      INSERT INTO tiendas (nombre_tienda, correo_tienda, tipo)
+      SELECT 'Oficina', 'oficina@bissu.pe', 'OFICINA'
+      WHERE NOT EXISTS (SELECT 1 FROM tiendas WHERE tipo = 'OFICINA')
+    `);
+    sqliteDb.run(`
+      INSERT INTO tiendas (nombre_tienda, correo_tienda, tipo)
+      SELECT 'Logística', 'logistica@bissu.pe', 'LOGISTICA'
+      WHERE NOT EXISTS (SELECT 1 FROM tiendas WHERE tipo = 'LOGISTICA')
+    `);
 
     sqliteDb.run(`
       CREATE TABLE IF NOT EXISTS capacity_diario (

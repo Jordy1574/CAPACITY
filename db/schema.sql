@@ -16,10 +16,11 @@ CREATE TABLE tiendas (
     id_tienda SERIAL PRIMARY KEY,
     codigo_almacen VARCHAR(20),
     nombre_tienda VARCHAR(100) NOT NULL,
-    rango_codigos VARCHAR(50), -- Ej. '0100-0109' para 10 plazas
-    correo_tienda VARCHAR(150) UNIQUE NOT NULL,
+    rango_codigos VARCHAR(50), -- Ej. '0100-0109' para 10 plazas (solo aplica a tipo TIENDA)
+    correo_tienda VARCHAR(150) UNIQUE, -- Sin correo para sedes de OFICINA/LOGISTICA (login es individual por empleado)
     encargada VARCHAR(150),
-    correo_encargada VARCHAR(150)
+    correo_encargada VARCHAR(150),
+    tipo VARCHAR(20) NOT NULL DEFAULT 'TIENDA' CHECK (tipo IN ('TIENDA', 'OFICINA', 'LOGISTICA'))
 );
 
 CREATE TABLE usuarios (

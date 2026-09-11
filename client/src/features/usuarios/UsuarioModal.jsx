@@ -95,13 +95,22 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit 
 
             {form.rol === 'TIENDA' && (
               <div>
-                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Tienda</label>
+                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Sede</label>
                 <select value={form.id_tienda} onChange={set('id_tienda')} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
-                  {(tiendas || []).map((t) => (
-                    <option key={t.id_tienda} value={t.id_tienda}>
-                      {t.nombre_tienda} ({t.codigo_almacen})
-                    </option>
-                  ))}
+                  <optgroup label="Tiendas">
+                    {(tiendas || []).filter((t) => t.tipo === 'TIENDA').map((t) => (
+                      <option key={t.id_tienda} value={t.id_tienda}>
+                        {t.nombre_tienda} ({t.codigo_almacen})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Oficina / Logística">
+                    {(tiendas || []).filter((t) => t.tipo !== 'TIENDA').map((t) => (
+                      <option key={t.id_tienda} value={t.id_tienda}>
+                        {t.nombre_tienda}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
             )}

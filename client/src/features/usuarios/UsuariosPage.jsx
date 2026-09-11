@@ -13,6 +13,25 @@ const ROL_COLORS = {
   TIENDA: 'bg-gray-100 text-gray-700 border-gray-200'
 };
 
+// Agrupa por el tipo de sede (tienda/oficina/logística) en vez de mostrar
+// todo mezclado — los usuarios sin sede (Admin/Supervisor/RRHH globales) van
+// en un grupo aparte al final.
+const GRUPOS = [
+  { key: 'TIENDA', label: 'Tiendas', icon: '🏬' },
+  { key: 'OFICINA', label: 'Oficina', icon: '🏢' },
+  { key: 'LOGISTICA', label: 'Logística', icon: '📦' },
+  { key: 'SIN_SEDE', label: 'General (sin sede asignada)', icon: '🌐' }
+];
+
+function agruparPorArea(usuarios) {
+  const grupos = { TIENDA: [], OFICINA: [], LOGISTICA: [], SIN_SEDE: [] };
+  usuarios.forEach((u) => {
+    const key = grupos[u.tipo_sede] ? u.tipo_sede : 'SIN_SEDE';
+    grupos[key].push(u);
+  });
+  return grupos;
+}
+
 export default function UsuariosPage() {
   const showToast = useToast();
   const confirm = useConfirm();
@@ -84,49 +103,59 @@ export default function UsuariosPage() {
         </button>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-6">
         {isLoading && <p className="text-center text-xs text-gray-400 py-8">Cargando usuarios...</p>}
         {error && <p className="text-center text-xs text-red-500 py-8">{error.message}</p>}
         {!isLoading && !error && usuarios.length === 0 && <p className="text-center text-xs text-gray-400 py-8">No hay usuarios registrados.</p>}
-        {usuarios.map((u) => {
-          const activo = Boolean(u.activo);
-          return (
-            <div key={u.id_usuario} className="antigravity-card p-4 bg-white flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3 min-w-[220px]">
-                <div className="w-9 h-9 rounded-full bg-pink-50 text-[#D81B60] flex items-center justify-center font-bold text-sm">
-                  {u.email.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-gray-900">{u.email}</p>
-                  <p className="text-[10px] text-gray-400">{u.nombre_tienda || 'Todas las tiendas'}</p>
-                </div>
-              </div>
-              <span className={`px-2 py-0.5 text-[10px] font-bold rounded-lg border ${ROL_COLORS[u.rol] || ''}`}>{u.rol}</span>
-              <span className={`px-2 py-0.5 text-[10px] font-bold rounded-lg border ${activo ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                {activo ? 'ACTIVO' : 'INACTIVO'}
-              </span>
-              <div className="flex items-center gap-2 ml-auto">
-                <button onClick={() => setModal({ open: true, usuario: u })} className="px-3 py-1.5 text-[11px] font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">
-                  Editar
-                </button>
-                <button
-                  onClick={() => setResetModal({ open: true, idUsuario: u.id_usuario })}
-                  className="px-3 py-1.5 text-[11px] font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg"
-                >
-                  Contraseña
-                </button>
-                <button
-                  onClick={() => handleToggleActivo(u)}
-                  className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border ${
-                    activo ? 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
-                  }`}
-                >
-                  {activo ? 'Desactivar' : 'Activar'}
-                </button>
-              </div>
+        {!isLoading && !error && usuarios.length > 0 && (() => {
+          const grupos = agruparPorArea(usuarios);
+          return GRUPOS.filter((g) => grupos[g.key].length > 0).map((g) => (
+            <div key={g.key} className="space-y-3">
+              <h3 className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <span>{g.icon}</span> {g.label} <span className="text-gray-300 font-normal">({grupos[g.key].length})</span>
+              </h3>
+              {grupos[g.key].map((u) => {
+                const activo = Boolean(u.activo);
+                return (
+                  <div key={u.id_usuario} className="antigravity-card p-4 bg-white flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 min-w-[220px]">
+                      <div className="w-9 h-9 rounded-full bg-pink-50 text-[#D81B60] flex items-center justify-center font-bold text-sm">
+                        {u.email.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-gray-900">{u.email}</p>
+                        <p className="text-[10px] text-gray-400">{u.nombre_tienda || 'Todas las tiendas'}</p>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-lg border ${ROL_COLORS[u.rol] || ''}`}>{u.rol}</span>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-lg border ${activo ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                      {activo ? 'ACTIVO' : 'INACTIVO'}
+                    </span>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <button onClick={() => setModal({ open: true, usuario: u })} className="px-3 py-1.5 text-[11px] font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => setResetModal({ open: true, idUsuario: u.id_usuario })}
+                        className="px-3 py-1.5 text-[11px] font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg"
+                      >
+                        Contraseña
+                      </button>
+                      <button
+                        onClick={() => handleToggleActivo(u)}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border ${
+                          activo ? 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+                        }`}
+                      >
+                        {activo ? 'Desactivar' : 'Activar'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          ));
+        })()}
       </div>
 
       <UsuarioModal open={modal.open} usuario={modal.usuario} saving={saving} onClose={() => setModal({ open: false, usuario: null })} onSubmit={handleSubmit} />

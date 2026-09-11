@@ -37,9 +37,14 @@ export default function CapacityPage() {
   const [savingEmployee, setSavingEmployee] = useState(false);
   const [powerQueryOpen, setPowerQueryOpen] = useState(false);
 
-  const { data: tiendas } = useTiendas();
+  const { data: tiendasAll } = useTiendas();
+  // Capacity mide cumplimiento de plazas de vendedoras, que no aplica a
+  // sedes de Oficina/Logística — solo se listan sedes tipo TIENDA aquí.
+  const tiendas = (tiendasAll || []).filter((t) => t.tipo === 'TIENDA');
   useEffect(() => {
-    if (isAdminLike && !storeId && tiendas?.length) {
+    if (!isAdminLike || !tiendas.length) return;
+    const seleccionValida = tiendas.some((t) => t.id_tienda === storeId);
+    if (!seleccionValida) {
       setStoreId(user.id_tienda || tiendas[0].id_tienda);
     }
   }, [isAdminLike, storeId, tiendas, user.id_tienda]);

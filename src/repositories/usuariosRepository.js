@@ -18,7 +18,7 @@ async function findByEmail(email) {
 
 function listAll() {
   return query(`
-    SELECT u.id_usuario, u.email, u.rol, u.id_tienda, u.activo, t.nombre_tienda
+    SELECT u.id_usuario, u.email, u.rol, u.id_tienda, u.activo, t.nombre_tienda, t.tipo AS tipo_sede
     FROM usuarios u
     LEFT JOIN tiendas t ON u.id_tienda = t.id_tienda
     ORDER BY u.id_usuario ASC

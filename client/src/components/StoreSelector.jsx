@@ -9,7 +9,7 @@ export default function StoreSelector({ tiendas, value, onChange }) {
       >
         {(tiendas || []).map((t) => (
           <option key={t.id_tienda} value={t.id_tienda}>
-            {t.nombre_tienda} ({t.codigo_almacen})
+            {t.codigo_almacen ? `${t.nombre_tienda} (${t.codigo_almacen})` : t.nombre_tienda}
           </option>
         ))}
       </select>
