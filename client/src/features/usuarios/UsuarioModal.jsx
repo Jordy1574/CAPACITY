@@ -88,7 +88,6 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit 
               <select value={form.rol} onChange={set('rol')} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
                 <option value="TIENDA">TIENDA</option>
                 <option value="SUPERVISOR">SUPERVISOR</option>
-                <option value="RRHH">RRHH</option>
                 <option value="ADMIN">ADMIN</option>
               </select>
             </div>
