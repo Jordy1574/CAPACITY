@@ -1,4 +1,4 @@
-import { http } from './http';
+import { getToken, http } from './http';
 
 export function fetchHorarioSemana(semanaInicio, idTienda) {
   return http.get(`/horarios/semana?semana_inicio=${semanaInicio}&id_tienda=${idTienda}`);
@@ -29,6 +29,27 @@ export function actualizarSolicitud(idSolicitud, motivo, cambios) {
 
 export function updateDiaDescanso(idEmpleado, diaDescanso) {
   return http.put(`/horarios/empleados/${idEmpleado}/dia-descanso`, { dia_descanso: diaDescanso });
+}
+
+// Descarga directa: la respuesta es un archivo, no JSON, así que no pasa por http().
+export async function descargarHorarioXlsx(mes, idTienda) {
+  const res = await fetch(`/api/horarios/export.xlsx?mes=${mes}&id_tienda=${idTienda}`, {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'No se pudo generar el archivo.');
+  }
+
+  const nombre = /filename="(.+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || `horarios_${mes}.xlsx`;
+  const url = URL.createObjectURL(await res.blob());
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function fetchNovedades(idEmpleado) {

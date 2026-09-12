@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { actualizarSolicitud, resolverSolicitud } from '../../api/horarios';
 import { useToast } from '../../hooks/useToast';
 import HorarioGrid from './HorarioGrid';
 import DescansoSummary from './DescansoSummary';
 import TurnoModal from './TurnoModal';
+import { descargarNodoComoImagen } from '../../utils/descargarImagen';
 
 // El horario oficial no se toca visualmente en la grilla principal — esta
 // vista de revisión es la única que muestra el oficial con los cambios
@@ -58,6 +59,8 @@ export default function SolicitudReviewOverlay({
   const [reviewChanges, setReviewChanges] = useState({});
   const [turnoModal, setTurnoModal] = useState({ open: false });
   const [resolving, setResolving] = useState(false);
+  const [descargando, setDescargando] = useState(false);
+  const bloqueRef = useRef(null);
   const showToast = useToast();
 
   useEffect(() => {
@@ -75,6 +78,19 @@ export default function SolicitudReviewOverlay({
 
   const handleCellClick = (idEmpleado, empNombre, fecha, blocks) => {
     setTurnoModal({ open: true, idEmpleado, empNombre, fecha, blocks });
+  };
+
+  // Permite bajar la imagen de la propuesta, no solo del horario oficial.
+  const handleDescargarImagen = async () => {
+    setDescargando(true);
+    try {
+      await descargarNodoComoImagen(bloqueRef.current, `horario_propuesto_${weekDates[0]}.png`);
+      showToast('Imagen descargada.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setDescargando(false);
+    }
   };
 
   // La tienda corrige su propia solicitud sin crear otra: se actualiza la
@@ -171,6 +187,18 @@ export default function SolicitudReviewOverlay({
               Cerrar
             </button>
 
+            <button
+              onClick={handleDescargarImagen}
+              disabled={descargando}
+              className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl disabled:opacity-60"
+              title="Descargar esta vista como imagen"
+            >
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>{descargando ? 'Generando...' : 'Imagen'}</span>
+            </button>
+
             {modo === 'APROBAR' && (
               <>
                 <button
@@ -212,8 +240,10 @@ export default function SolicitudReviewOverlay({
           </div>
         </div>
 
-        <HorarioGrid weekDates={weekDates} empleados={baseEmpleados} pendingChanges={reviewChanges} onCellClick={handleCellClick} />
-        <DescansoSummary weekDates={weekDates} empleados={baseEmpleados} pendingChanges={reviewChanges} onChangeDiaDescanso={onChangeDiaDescanso} />
+        <div className="space-y-4" ref={bloqueRef}>
+          <HorarioGrid weekDates={weekDates} empleados={baseEmpleados} pendingChanges={reviewChanges} onCellClick={handleCellClick} />
+          <DescansoSummary weekDates={weekDates} empleados={baseEmpleados} pendingChanges={reviewChanges} onChangeDiaDescanso={onChangeDiaDescanso} />
+        </div>
       </div>
 
       <TurnoModal

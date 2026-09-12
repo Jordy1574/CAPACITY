@@ -1,4 +1,5 @@
 const horariosService = require('../services/horariosService');
+const horariosExportService = require('../services/horariosExportService');
 const { authenticate } = require('../middleware/auth');
 const { requireRole, ROLES_ADMIN } = require('../middleware/roles');
 
@@ -8,6 +9,18 @@ async function horariosRoutes(fastify, options) {
   fastify.get('/api/horarios/semana', { onRequest: [authenticate] }, async (request, reply) => {
     const data = await horariosService.getHorarioSemana(request.user, request.query.semana_inicio, request.query.id_tienda);
     return reply.send(data);
+  });
+
+  // GET /api/horarios/export.xlsx?mes=2026-09&id_tienda=8 - Mes completo con
+  // una hoja por semana. Reservado a Admin/Supervisor/RRHH.
+  fastify.get('/api/horarios/export.xlsx', {
+    onRequest: [authenticate, requireRole(...ROLES_ADMIN)]
+  }, async (request, reply) => {
+    const { buffer, nombreArchivo } = await horariosExportService.exportarMesXlsx(request.query.mes, request.query.id_tienda);
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${nombreArchivo}"`)
+      .send(buffer);
   });
 
   // PUT /api/horarios/bulk-update - Edición en vivo (bloqueada para TIENDA una vez confirmada como oficial)

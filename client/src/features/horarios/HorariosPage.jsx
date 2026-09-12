@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { useSelectedStore } from '../../store/SelectedStoreContext';
 import { useTiendas } from '../../api/useTiendas';
@@ -7,7 +7,8 @@ import { useConfirm } from '../../hooks/useConfirm';
 import { ROLES_ADMIN } from '../../lib/constants';
 import StoreHeaderBanner from '../../components/StoreHeaderBanner';
 import SaveBar from '../../components/SaveBar';
-import { bulkUpdateHorarios, crearSolicitud, updateDiaDescanso as apiUpdateDiaDescanso } from '../../api/horarios';
+import { bulkUpdateHorarios, crearSolicitud, descargarHorarioXlsx, updateDiaDescanso as apiUpdateDiaDescanso } from '../../api/horarios';
+import { descargarNodoComoImagen } from '../../utils/descargarImagen';
 import { addDaysToDateStr, getMondayOf, getWeekDates, formatWeekLabel } from './dateUtils';
 import { useHorarioWeek, useInvalidateHorarios } from './useHorarioWeek';
 import { useSolicitudesPendientesCount } from './useSolicitudesPendientesCount';
@@ -51,6 +52,8 @@ export default function HorariosPage() {
   const [novedadesModal, setNovedadesModal] = useState({ open: false, empleado: null });
   const [proponerOpen, setProponerOpen] = useState(false);
   const [cambiosPropuestos, setCambiosPropuestos] = useState(null);
+  const [descargando, setDescargando] = useState(false);
+  const bloqueHorarioRef = useRef(null);
 
   const { data: tiendas } = useTiendas();
   useEffect(() => {
@@ -136,6 +139,31 @@ export default function HorariosPage() {
     );
     if (!ok) return;
     setProponerOpen(true);
+  };
+
+  const nombreTiendaArchivo = (data?.tienda?.nombre_tienda || 'horario').replace(/[^A-Za-z0-9]/g, '_');
+
+  const handleDescargarExcel = async () => {
+    setDescargando(true);
+    try {
+      await descargarHorarioXlsx(weekStart.substring(0, 7), storeId);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setDescargando(false);
+    }
+  };
+
+  const handleDescargarImagen = async () => {
+    setDescargando(true);
+    try {
+      await descargarNodoComoImagen(bloqueHorarioRef.current, `horario_${nombreTiendaArchivo}_${weekStart}.png`);
+      showToast('Imagen descargada.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setDescargando(false);
+    }
   };
 
   const handleMotivoSubmit = async (motivo) => {
@@ -277,6 +305,37 @@ export default function HorariosPage() {
             </button>
           )}
 
+          {/* La imagen sirve para compartir el horario por WhatsApp o imprimirlo:
+              disponible para todos, tanto del oficial como de una propuesta. */}
+          {(confirmadoPor || solicitud || empleados.length > 0) && (
+            <button
+              onClick={handleDescargarImagen}
+              disabled={descargando}
+              className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl transition-all disabled:opacity-60"
+              title="Descargar el horario de esta semana como imagen"
+            >
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>{descargando ? 'Generando...' : 'Imagen'}</span>
+            </button>
+          )}
+
+          {/* El mes completo en Excel, una hoja por semana. Solo gestión. */}
+          {isAdminLike && (
+            <button
+              onClick={handleDescargarExcel}
+              disabled={descargando}
+              className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all disabled:opacity-60"
+              title="Descargar el mes completo en Excel, con una hoja por semana"
+            >
+              <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+              <span>Excel del Mes</span>
+            </button>
+          )}
+
           {!confirmadoPor && (
             <button onClick={handleEnviarPrimeraVez} className="btn-bissu px-3.5 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,7 +386,7 @@ export default function HorariosPage() {
         <div className="antigravity-card bg-white p-12 text-center text-gray-400 font-medium">Cargando horario...</div>
       ) : (
         <>
-          <div className="space-y-2">
+          <div className="space-y-2" ref={bloqueHorarioRef}>
             {confirmadoPor && <OfficialBanner hayPendiente={Boolean(solicitud)} />}
             <HorarioGrid weekDates={weekDates} empleados={empleados} pendingChanges={pendingChanges} onCellClick={handleCellClick} />
           </div>
