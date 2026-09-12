@@ -1,10 +1,17 @@
 import { Fragment } from 'react';
-import { EMPLOYEE_COLOR_PALETTE, coverageForHour, calcularHorasTotales, formatRangoHora, rangoHorasSemana } from './coverage';
+import { EMPLOYEE_COLOR_PALETTE, coverageForHour, calcularHorasTotales, formatRangoHora, rangoHorasSemana, DIA_DESCANSO_A_INDICE } from './coverage';
 
 // La grilla siempre permite hacer clic: si la semana ya tiene horario oficial,
 // lo que se edita queda como una propuesta local (solicitud de cambio) en vez
 // de guardarse en vivo — la decisión de a dónde va el guardado la toma quien
 // use este componente (HorariosPage / SolicitudReviewOverlay), no la grilla.
+// El descanso semanal declarado se pinta en la columna de ese colaborador,
+// para que se vea de un vistazo quién libra cada día.
+function esDiaDeDescanso(emp, dayStr) {
+  if (!emp.dia_descanso) return false;
+  return new Date(`${dayStr}T00:00:00`).getDay() === DIA_DESCANSO_A_INDICE[emp.dia_descanso];
+}
+
 export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCellClick }) {
   const totalCols = weekDates.length * Math.max(empleados.length, 1);
 
@@ -77,14 +84,22 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
                   {empleados.map((emp) => {
                     const color = empColors[emp.id_empleado];
                     const isPending = pendingChanges[`${emp.id_empleado}_${dayStr}`] !== undefined;
+                    const descansa = esDiaDeDescanso(emp, dayStr);
                     return (
                       <th
                         key={`${dayStr}-${emp.id_empleado}`}
                         className={`relative p-1 border-b border-l border-gray-300/60 text-center font-semibold text-[9px] ${isPending ? 'cell-modified' : ''}`}
-                        style={{ backgroundColor: color.bg, color: color.text, minWidth: 42 }}
-                        title={`${emp.nombre_completo} — ${emp.puesto || ''} — ${emp.regimen || ''}${emp.codigo_empleado ? ` — Código: ${emp.codigo_empleado}` : ''}`}
+                        style={
+                          descansa
+                            ? { backgroundColor: '#E5E7EB', color: '#6B7280', minWidth: 42 }
+                            : { backgroundColor: color.bg, color: color.text, minWidth: 42 }
+                        }
+                        title={`${emp.nombre_completo} — ${emp.puesto || ''} — ${emp.regimen || ''}${emp.codigo_empleado ? ` — Código: ${emp.codigo_empleado}` : ''}${descansa ? ' — DESCANSO' : ''}`}
                       >
-                        {(emp.nombre_completo || '').split(' ')[0]}
+                        <div>{(emp.nombre_completo || '').split(' ')[0]}</div>
+                        {/* La columna entera va en gris; acá se nombra el motivo,
+                            porque "DESCANSO" completo no entra en 42px. */}
+                        {descansa && <div className="text-[8px] font-black tracking-tight">DESC.</div>}
                       </th>
                     );
                   })}
@@ -114,8 +129,9 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
                         const blocks = isPending ? pendingChanges[key].turnos : emp.dias[dayStr];
                         const coverage = coverageForHour(blocks, hour * 60);
                         const color = empColors[emp.id_empleado];
+                        const descansa = esDiaDeDescanso(emp, dayStr);
 
-                        let style = {};
+                        let style = descansa ? { backgroundColor: '#F3F4F6' } : {};
                         let text = '';
                         if (coverage) {
                           const fraction = (coverage.endPct - coverage.startPct) / 100;
@@ -155,9 +171,16 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
                     const isPending = pendingChanges[key] !== undefined;
                     const blocks = isPending ? pendingChanges[key].turnos : emp.dias[dayStr];
                     const total = calcularHorasTotales(blocks);
+                    const descansa = esDiaDeDescanso(emp, dayStr);
                     return (
-                      <td key={`total-${dayStr}-${emp.id_empleado}`} className="p-1 border-t-2 border-l border-gray-300 text-center text-[10px] font-bold text-gray-600 bg-gray-50">
-                        {total > 0 ? total.toFixed(1) : '-'}
+                      <td
+                        key={`total-${dayStr}-${emp.id_empleado}`}
+                        className={`p-1 border-t-2 border-l border-gray-300 text-center text-[10px] font-bold ${
+                          descansa && total === 0 ? 'text-gray-500 bg-gray-200' : 'text-gray-600 bg-gray-50'
+                        }`}
+                        title={descansa ? `Día de descanso de ${emp.nombre_completo}` : undefined}
+                      >
+                        {total > 0 ? total.toFixed(1) : descansa ? 'DESC' : '-'}
                       </td>
                     );
                   })}

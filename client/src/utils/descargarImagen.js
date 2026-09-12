@@ -5,36 +5,50 @@ export async function descargarNodoComoImagen(nodo, nombreArchivo) {
 
   const { default: html2canvas } = await import('html2canvas');
 
-  // La grilla vive dentro de un contenedor con scroll: se desactiva un momento
-  // para que la captura salga completa y no recortada a lo que se ve en pantalla.
-  const scrollables = nodo.querySelectorAll('.table-container');
-  const estilosPrevios = [];
-  scrollables.forEach((el) => {
-    estilosPrevios.push([el, el.style.maxHeight, el.style.overflow]);
-    el.style.maxHeight = 'none';
-    el.style.overflow = 'visible';
+  // html2canvas captura el tamaño que el nodo ocupa en pantalla. La grilla vive
+  // dentro de contenedores con scroll en ambos ejes, así que sin esto la imagen
+  // sale recortada a lo visible: se pierden los últimos días de la semana.
+  const restaurar = [];
+  const fijar = (el, prop, valor) => {
+    restaurar.push([el, prop, el.style[prop]]);
+    el.style[prop] = valor;
+  };
+
+  nodo.querySelectorAll('.table-container').forEach((el) => {
+    fijar(el, 'maxHeight', 'none');
+    fijar(el, 'overflow', 'visible');
   });
 
   try {
+    // Se mide después de liberar el scroll: recién ahí scrollWidth/Height
+    // reflejan el contenido completo y no la ventana.
+    const ancho = Math.ceil(nodo.scrollWidth);
+    const alto = Math.ceil(nodo.scrollHeight);
+
+    fijar(nodo, 'width', `${ancho}px`);
+    fijar(nodo, 'maxWidth', 'none');
+
     const canvas = await html2canvas(nodo, {
       backgroundColor: '#ffffff',
       scale: 2, // el doble de resolución, para que se lea al imprimir o ampliar
       useCORS: true,
-      windowWidth: nodo.scrollWidth,
-      windowHeight: nodo.scrollHeight
+      width: ancho,
+      height: alto,
+      windowWidth: ancho,
+      windowHeight: alto,
+      scrollX: 0,
+      scrollY: 0
     });
 
-    const dataUrl = canvas.toDataURL('image/png');
     const enlace = document.createElement('a');
-    enlace.href = dataUrl;
+    enlace.href = canvas.toDataURL('image/png');
     enlace.download = nombreArchivo;
     document.body.appendChild(enlace);
     enlace.click();
     enlace.remove();
   } finally {
-    estilosPrevios.forEach(([el, maxHeight, overflow]) => {
-      el.style.maxHeight = maxHeight;
-      el.style.overflow = overflow;
+    restaurar.forEach(([el, prop, valor]) => {
+      el.style[prop] = valor;
     });
   }
 }
