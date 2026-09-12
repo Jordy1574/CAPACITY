@@ -58,6 +58,7 @@ fastify.register(require('./routes/auth'));
 fastify.register(require('./routes/capacity'));
 fastify.register(require('./routes/horarios'));
 fastify.register(require('./routes/usuarios'));
+fastify.register(require('./routes/tiendas'));
 
 // Fallback de la SPA: cualquier GET que no sea /api/* ni un archivo estático
 // existente sirve el index.html del build de React (react-router maneja la

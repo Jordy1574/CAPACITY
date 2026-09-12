@@ -16,4 +16,23 @@ async function findById(idTienda) {
   return rows[0] || null;
 }
 
-module.exports = { listAll, findById };
+async function findByCorreo(correo) {
+  const rows = await query('SELECT * FROM tiendas WHERE LOWER(correo_tienda) = LOWER($1)', [correo]);
+  return rows[0] || null;
+}
+
+function insert({ nombreTienda, codigoAlmacen, correoTienda, tipo, rangoCodigos }, exec = query) {
+  return exec(
+    'INSERT INTO tiendas (nombre_tienda, codigo_almacen, correo_tienda, tipo, rango_codigos) VALUES ($1, $2, $3, $4, $5) RETURNING id_tienda',
+    [nombreTienda, codigoAlmacen || null, correoTienda || null, tipo, rangoCodigos || null]
+  );
+}
+
+function update(id, { nombreTienda, codigoAlmacen, correoTienda, rangoCodigos }) {
+  return query(
+    'UPDATE tiendas SET nombre_tienda = $1, codigo_almacen = $2, correo_tienda = $3, rango_codigos = $4 WHERE id_tienda = $5',
+    [nombreTienda, codigoAlmacen || null, correoTienda || null, rangoCodigos || null, id]
+  );
+}
+
+module.exports = { listAll, findById, findByCorreo, insert, update };
