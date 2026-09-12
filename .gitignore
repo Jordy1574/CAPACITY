@@ -5,3 +5,6 @@ dist/
 *.bak
 server_pid.txt
 gemini-code*.txt
+
+# Base SQLite del esquema anterior: el proyecto usa solo PostgreSQL
+db/capacity.db
