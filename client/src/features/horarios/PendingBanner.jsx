@@ -1,4 +1,4 @@
-export default function PendingBanner({ solicitud, onRevisar, canRevisar, hayOficial }) {
+export default function PendingBanner({ solicitud, onRevisar, onNuevaSolicitud, canRevisar, hayOficial, esVista }) {
   if (!solicitud) return null;
 
   const fecha = new Date(solicitud.fecha_solicitud).toLocaleString('es-PE');
@@ -20,14 +20,27 @@ export default function PendingBanner({ solicitud, onRevisar, canRevisar, hayOfi
           )}
         </div>
       </div>
-      {canRevisar && (
-        <button
-          onClick={onRevisar}
-          className="px-5 py-2.5 text-xs font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm"
-        >
-          Revisar Solicitud
-        </button>
-      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Empezar de cero descarta la propuesta actual y parte otra vez del
+            horario oficial, en vez de seguir corrigiendo la que ya se envió. */}
+        {esVista && onNuevaSolicitud && (
+          <button
+            onClick={onNuevaSolicitud}
+            className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-800 bg-white hover:bg-amber-100 border-2 border-amber-300 rounded-xl"
+            title="Descarta esta solicitud y arma una nueva partiendo del horario oficial"
+          >
+            Empezar de Cero
+          </button>
+        )}
+        {canRevisar && (
+          <button
+            onClick={onRevisar}
+            className="px-5 py-2.5 text-xs font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm"
+          >
+            {esVista ? 'Ver / Corregir Mi Solicitud' : 'Revisar Solicitud'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

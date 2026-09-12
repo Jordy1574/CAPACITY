@@ -1,5 +1,10 @@
+// Rango que la grilla muestra siempre, aunque no haya turnos en esos bordes.
+// Si la semana tiene turnos fuera de aquí (abre antes o cierra de madrugada),
+// la grilla se estira sola — ver rangoHorasSemana().
 export const HORARIO_HOUR_START = 7; // 07:00
 export const HORARIO_HOUR_END = 23; // 23:00 (exclusivo) — última fila es 22:00-23:00
+
+export const MINUTOS_DIA = 24 * 60;
 
 // Paleta cíclica para distinguir colaboradores en la grilla semanal. No
 // empieza en rosa/magenta a propósito: ese es el color de marca/acento de la
@@ -17,10 +22,12 @@ export const EMPLOYEE_COLOR_PALETTE = [
   { bg: '#ECEFF1', text: '#455A64', border: '#CFD8DC' }
 ];
 
-// Formatea una hora (0-23) en 12 horas con am/pm, ej. formatHora12(7) -> {text:'7:00', suffix:'am'}
+// Formatea una hora en 12 horas con am/pm, ej. formatHora12(7) -> {text:'7:00', suffix:'am'}.
+// Acepta horas >= 24, que representan la madrugada del día siguiente.
 export function formatHora12(hour) {
-  const h12 = hour % 12 === 0 ? 12 : hour % 12;
-  return { text: `${h12}:00`, suffix: hour < 12 ? 'am' : 'pm' };
+  const h = ((hour % 24) + 24) % 24;
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return { text: `${h12}:00`, suffix: h < 12 ? 'am' : 'pm' };
 }
 
 // Etiqueta de la fila de hora, ej. "7:00 - 8:00 am" o, si cruza el mediodía,
@@ -39,8 +46,41 @@ export function horaAMinutos(hora) {
   return h * 60 + m;
 }
 
+// Minutos de inicio y fin de un bloque. Un turno que termina antes de su hora
+// de inicio (22:00-02:00) cruza la medianoche: su fin se expresa como minutos
+// más allá de 1440, para poder compararlo y dibujarlo en una sola línea.
+export function bloqueEnMinutos(b) {
+  const inicio = horaAMinutos(b.hora_inicio);
+  let fin = horaAMinutos(b.hora_fin);
+  if (fin <= inicio) fin += MINUTOS_DIA;
+  return { inicio, fin };
+}
+
 export function calcularHorasTotales(blocks) {
-  return (blocks || []).reduce((sum, b) => sum + (horaAMinutos(b.hora_fin) - horaAMinutos(b.hora_inicio)), 0) / 60;
+  return (blocks || []).reduce((sum, b) => {
+    const { inicio, fin } = bloqueEnMinutos(b);
+    return sum + (fin - inicio);
+  }, 0) / 60;
+}
+
+// Rango de horas que debe dibujar la grilla de la semana: el fijo de siempre,
+// estirado si algún turno abre antes o cierra después (incluida la madrugada
+// del día siguiente, que se expresa como horas >= 24).
+export function rangoHorasSemana(empleados, weekDates) {
+  let min = HORARIO_HOUR_START;
+  let max = HORARIO_HOUR_END;
+
+  (empleados || []).forEach((emp) => {
+    (weekDates || []).forEach((dia) => {
+      (emp.dias?.[dia] || []).forEach((b) => {
+        const { inicio, fin } = bloqueEnMinutos(b);
+        min = Math.min(min, Math.floor(inicio / 60));
+        max = Math.max(max, Math.ceil(fin / 60));
+      });
+    });
+  });
+
+  return { horaInicio: min, horaFin: max };
 }
 
 // Qué parte (0-100%) de la hora [hourStartMin, hourStartMin+60) cubren los
@@ -53,8 +93,9 @@ export function coverageForHour(blocks, hourStartMin) {
   let start = null;
   let end = null;
   (blocks || []).forEach((b) => {
-    const overlapStart = Math.max(horaAMinutos(b.hora_inicio), hourStartMin);
-    const overlapEnd = Math.min(horaAMinutos(b.hora_fin), hourEndMin);
+    const { inicio, fin } = bloqueEnMinutos(b);
+    const overlapStart = Math.max(inicio, hourStartMin);
+    const overlapEnd = Math.min(fin, hourEndMin);
     if (overlapEnd > overlapStart) {
       if (start === null || overlapStart < start) start = overlapStart;
       if (end === null || overlapEnd > end) end = overlapEnd;
@@ -62,6 +103,17 @@ export function coverageForHour(blocks, hourStartMin) {
   });
   if (start === null) return null;
   return { startPct: ((start - hourStartMin) / 60) * 100, endPct: ((end - hourStartMin) / 60) * 100 };
+}
+
+// Jornada semanal estándar por régimen, usada cuando el colaborador no tiene
+// una jornada pactada distinta cargada.
+export const HORAS_SEMANA_ESTANDAR = { FT: 48, PT: 23.5 };
+
+export function horasContratoDe(empleado) {
+  if (empleado?.horas_semana !== null && empleado?.horas_semana !== undefined && empleado.horas_semana !== '') {
+    return Number(empleado.horas_semana);
+  }
+  return HORAS_SEMANA_ESTANDAR[empleado?.regimen] ?? HORAS_SEMANA_ESTANDAR.FT;
 }
 
 export const DIA_DESCANSO_OPCIONES = [

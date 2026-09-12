@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { EMPLOYEE_COLOR_PALETTE, HORARIO_HOUR_START, HORARIO_HOUR_END, coverageForHour, calcularHorasTotales, formatRangoHora } from './coverage';
+import { EMPLOYEE_COLOR_PALETTE, coverageForHour, calcularHorasTotales, formatRangoHora, rangoHorasSemana } from './coverage';
 
 // La grilla siempre permite hacer clic: si la semana ya tiene horario oficial,
 // lo que se edita queda como una propuesta local (solicitud de cambio) en vez
@@ -36,8 +36,11 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
     empColors[emp.id_empleado] = EMPLOYEE_COLOR_PALETTE[i % EMPLOYEE_COLOR_PALETTE.length];
   });
 
+  // La grilla se estira al horario real de la semana: si una tienda abrió
+  // más temprano o cerró de madrugada, esas filas aparecen.
+  const { horaInicio, horaFin } = rangoHorasSemana(empleados, weekDates);
   const hours = [];
-  for (let h = HORARIO_HOUR_START; h < HORARIO_HOUR_END; h++) hours.push(h);
+  for (let h = horaInicio; h < horaFin; h++) hours.push(h);
 
   return (
     <div className="antigravity-card bg-white p-3">
@@ -92,8 +95,14 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
           <tbody className="text-xs divide-y divide-gray-100">
             {hours.map((hour) => (
               <tr key={hour}>
-                <td className="p-1 sticky-col-1 border-b border-gray-100 text-[10px] font-bold text-gray-500 bg-white text-center whitespace-nowrap">
+                <td
+                  className={`p-1 sticky-col-1 border-b border-gray-100 text-[10px] font-bold bg-white text-center whitespace-nowrap ${
+                    hour >= 24 ? 'text-indigo-500' : 'text-gray-500'
+                  }`}
+                >
                   {formatRangoHora(hour)}
+                  {/* Las filas a partir de las 24 son la madrugada del día siguiente. */}
+                  {hour >= 24 && <span className="ml-1 text-[9px] font-normal text-indigo-400">+1</span>}
                 </td>
                 {weekDates.map((dayStr, dayIndex) => {
                   return (

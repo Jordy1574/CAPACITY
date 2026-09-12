@@ -21,6 +21,7 @@ import SolicitudesModal from './SolicitudesModal';
 import PendingBanner from './PendingBanner';
 import OfficialBanner from './OfficialBanner';
 import SolicitudReviewOverlay from './SolicitudReviewOverlay';
+import NovedadesModal from './NovedadesModal';
 
 function todayMonday() {
   const now = new Date();
@@ -47,6 +48,9 @@ export default function HorariosPage() {
   const [savingMotivo, setSavingMotivo] = useState(false);
   const [solicitudesOpen, setSolicitudesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [novedadesModal, setNovedadesModal] = useState({ open: false, empleado: null });
+  const [proponerOpen, setProponerOpen] = useState(false);
+  const [cambiosPropuestos, setCambiosPropuestos] = useState(null);
 
   const { data: tiendas } = useTiendas();
   useEffect(() => {
@@ -74,6 +78,16 @@ export default function HorariosPage() {
   const changeWeek = (offset) => setWeekStart((w) => addDaysToDateStr(w, offset * 7));
 
   const handleCellClick = (idEmpleado, empNombre, fecha, blocks) => {
+    // Con el horario ya oficial, la tienda no edita la grilla en vivo: se le
+    // abre la vista de propuesta para que arme y envíe su solicitud.
+    if (modoSolicitud) {
+      if (solicitud) {
+        showToast('Ya hay una solicitud pendiente de aprobación para esta semana.', 'info');
+        return;
+      }
+      setProponerOpen(true);
+      return;
+    }
     setTurnoModal({ open: true, idEmpleado, empNombre, fecha, blocks });
   };
 
@@ -112,14 +126,30 @@ export default function HorariosPage() {
     }
   };
 
+  // Descarta la propuesta enviada y arranca otra desde el horario oficial.
+  // El reemplazo lo hace el backend al crear la nueva: borra la pendiente en
+  // la misma transacción, y si justo fue aprobada la respeta y deja la nueva
+  // como pendiente.
+  const handleNuevaSolicitudDesdeOficial = async () => {
+    const ok = await confirm(
+      'Se descartará la solicitud que enviaste y armarás una nueva partiendo del horario oficial vigente. ¿Continuar?'
+    );
+    if (!ok) return;
+    setProponerOpen(true);
+  };
+
   const handleMotivoSubmit = async (motivo) => {
     setSavingMotivo(true);
     try {
-      const cambios = Object.values(pendingChanges);
+      // La propuesta armada en la vista de solicitud tiene prioridad sobre
+      // las ediciones sueltas de la grilla.
+      const cambios = cambiosPropuestos ?? Object.values(pendingChanges);
       const res = await crearSolicitud(weekStart, storeId, motivo, cambios);
       showToast(res.message || 'Solicitud enviada.', 'success');
       setPendingChanges({});
+      setCambiosPropuestos(null);
       setMotivoModalOpen(false);
+      setProponerOpen(false);
       invalidateHorarios(storeId);
     } catch (err) {
       showToast(err.message, 'error');
@@ -255,6 +285,20 @@ export default function HorariosPage() {
               <span>{solicitud ? 'Reenviar Horario' : 'Enviar Horario'}</span>
             </button>
           )}
+
+          {/* Con el horario ya oficial, la tienda no edita la grilla en vivo:
+              propone los cambios en una vista aparte y los manda a aprobación. */}
+          {confirmadoPor && !solicitud && modoSolicitud && (
+            <button
+              onClick={() => setProponerOpen(true)}
+              className="btn-bissu px-3.5 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21H3v-3.5L16.732 3.732z" />
+              </svg>
+              <span>Solicitar Cambio</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 text-xs font-medium text-gray-500 w-full py-1">
@@ -265,22 +309,34 @@ export default function HorariosPage() {
         </div>
       </div>
 
-      {solicitud ? (
-        <PendingBanner solicitud={solicitud} canRevisar={isAdminLike} hayOficial={Boolean(confirmadoPor)} onRevisar={() => setReviewOpen(true)} />
-      ) : (
-        confirmadoPor && <OfficialBanner />
+      {/* La solicitud pendiente va arriba porque es el aviso que pide acción.
+          El cartel de "oficial" no: ese rotula la grilla, así que viaja pegado
+          a ella para que no se confunda con la propuesta en curso. */}
+      {solicitud && (
+        <PendingBanner
+          solicitud={solicitud}
+          canRevisar
+          esVista={!isAdminLike}
+          hayOficial={Boolean(confirmadoPor)}
+          onRevisar={() => setReviewOpen(true)}
+          onNuevaSolicitud={modoSolicitud ? handleNuevaSolicitudDesdeOficial : undefined}
+        />
       )}
 
       {isLoading ? (
         <div className="antigravity-card bg-white p-12 text-center text-gray-400 font-medium">Cargando horario...</div>
       ) : (
         <>
-          <HorarioGrid weekDates={weekDates} empleados={empleados} pendingChanges={pendingChanges} onCellClick={handleCellClick} />
+          <div className="space-y-2">
+            {confirmadoPor && <OfficialBanner hayPendiente={Boolean(solicitud)} />}
+            <HorarioGrid weekDates={weekDates} empleados={empleados} pendingChanges={pendingChanges} onCellClick={handleCellClick} />
+          </div>
           <DescansoSummary
             weekDates={weekDates}
             empleados={empleados}
             pendingChanges={pendingChanges}
             onChangeDiaDescanso={handleChangeDiaDescanso}
+            onVerNovedades={(emp) => setNovedadesModal({ open: true, empleado: emp })}
           />
         </>
       )}
@@ -308,8 +364,24 @@ export default function HorariosPage() {
 
       <SolicitudesModal open={solicitudesOpen} onClose={() => setSolicitudesOpen(false)} onRevisar={handleRevisarDesdeModal} />
 
+      {/* La tienda arma su propuesta partiendo del oficial vigente. */}
+      <SolicitudReviewOverlay
+        open={proponerOpen}
+        modo="PROPONER"
+        weekDates={weekDates}
+        empleados={empleados}
+        enviando={savingMotivo}
+        onChangeDiaDescanso={handleChangeDiaDescanso}
+        onClose={() => setProponerOpen(false)}
+        onEnviarPropuesta={(cambios) => {
+          setCambiosPropuestos(cambios);
+          setMotivoModalOpen(true);
+        }}
+      />
+
       <SolicitudReviewOverlay
         open={reviewOpen && Boolean(solicitud)}
+        modo={isAdminLike ? 'APROBAR' : 'VER'}
         weekDates={weekDates}
         empleados={empleados}
         solicitud={solicitud}
@@ -320,6 +392,13 @@ export default function HorariosPage() {
           invalidateHorarios(storeId);
           refetchPendientesCount();
         }}
+      />
+
+      <NovedadesModal
+        open={novedadesModal.open}
+        empleado={novedadesModal.empleado}
+        onClose={() => setNovedadesModal({ open: false, empleado: null })}
+        onSaved={() => invalidateHorarios(storeId)}
       />
     </main>
   );

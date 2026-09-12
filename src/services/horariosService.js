@@ -1,6 +1,8 @@
 const tiendasRepository = require('../repositories/tiendasRepository');
 const empleadosRepository = require('../repositories/empleadosRepository');
 const horariosRepository = require('../repositories/horariosRepository');
+const capacityService = require('./capacityService');
+const novedadesRepository = require('../repositories/novedadesRepository');
 const { getMondayOf, getWeekDates, todayStr } = require('../utils/dates');
 const { ROLES_ADMIN } = require('../middleware/roles');
 const { withTransaction } = require('../config/db');
@@ -34,6 +36,13 @@ function resolveTiendaIdRequired(user, bodyIdTienda) {
   return idTienda;
 }
 
+// Una cuenta ligada a un empleado (Oficina/Logística) solo puede ver y
+// registrar SU propio horario. La cuenta compartida de una tienda no tiene
+// id_empleado: la encargada llena el horario de todo su equipo.
+function empleadoPropioDe(user) {
+  return user.rol === 'TIENDA' && user.id_empleado ? user.id_empleado : null;
+}
+
 const FECHA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 function normalizarSemanaInicio(semanaInput) {
@@ -51,7 +60,11 @@ async function getHorarioSemana(user, semanaInicioInput, queryIdTienda) {
     throw new AppError('Tienda no encontrada.', 404);
   }
 
-  const empleados = await empleadosRepository.getActiveEmpleados(idTienda, semanaInicio);
+  const idEmpleadoPropio = empleadoPropioDe(user);
+  const todosLosEmpleados = await empleadosRepository.getActiveEmpleados(idTienda, semanaInicio);
+  const empleados = idEmpleadoPropio
+    ? todosLosEmpleados.filter((e) => e.id_empleado === idEmpleadoPropio)
+    : todosLosEmpleados;
   const periodo = await horariosRepository.getSemana(idTienda, semanaInicio);
   const solicitudPendiente = await horariosRepository.getSolicitudPendiente(idTienda, semanaInicio);
 
@@ -66,6 +79,9 @@ async function getHorarioSemana(user, semanaInicioInput, queryIdTienda) {
         motivo: solicitudPendiente.motivo,
         fecha_solicitud: solicitudPendiente.fecha_solicitud,
         solicitado_por_email: solicitudPendiente.solicitado_por_email,
+        // Se envía al aprobar: si no coincide con la de la base, es que la
+        // tienda corrigió la solicitud después de abrirla.
+        version: solicitudPendiente.version,
         cambios: solicitudCambios
       }
     : null;
@@ -76,6 +92,13 @@ async function getHorarioSemana(user, semanaInicioInput, queryIdTienda) {
 
   const empIds = empleados.map(e => e.id_empleado);
   const turnoRecords = await horariosRepository.findTurnosForFechas(weekDates, empIds);
+  const novedades = await novedadesRepository.findEnRango(empIds, weekDates[0], weekDates[6]);
+
+  const novedadesPorEmpleado = {};
+  novedades.forEach(n => {
+    if (!novedadesPorEmpleado[n.id_empleado]) novedadesPorEmpleado[n.id_empleado] = [];
+    novedadesPorEmpleado[n.id_empleado].push(n);
+  });
 
   const turnosMap = {};
   turnoRecords.forEach(rec => {
@@ -92,7 +115,7 @@ async function getHorarioSemana(user, semanaInicioInput, queryIdTienda) {
     weekDates.forEach(fecha => {
       diasObj[fecha] = turnosMap[emp.id_empleado]?.[fecha] ?? [];
     });
-    return { ...emp, dias: diasObj };
+    return { ...emp, dias: diasObj, novedades: novedadesPorEmpleado[emp.id_empleado] || [] };
   });
 
   return { tienda, semana_inicio: semanaInicio, dias_semana: weekDates, empleados: empleadosConDias, periodo, solicitud_pendiente: solicitudInfo };
@@ -105,17 +128,24 @@ function horaToMinutos(hora) {
   return h * 60 + m;
 }
 
+const MINUTOS_DIA = 24 * 60;
+
 // Valida formato, orden y solapes de los bloques de turno de un día,
 // y los devuelve ordenados por hora de inicio listos para guardar.
+// Un bloque cuyo fin es menor que su inicio (ej. 22:00-02:00) cruza la
+// medianoche: se interpreta que termina en la madrugada del día siguiente.
 function validarBloquesTurno(turnos) {
   const bloques = turnos.map(t => {
     if (!t || !HORA_REGEX.test(t.hora_inicio) || !HORA_REGEX.test(t.hora_fin)) {
       throw new AppError('Formato de hora inválido. Usa HH:MM.', 400);
     }
     const inicio = horaToMinutos(t.hora_inicio);
-    const fin = horaToMinutos(t.hora_fin);
-    if (fin <= inicio) {
-      throw new AppError('La hora de fin debe ser posterior a la hora de inicio.', 400);
+    let fin = horaToMinutos(t.hora_fin);
+    if (fin === inicio) {
+      throw new AppError('La hora de fin no puede ser igual a la de inicio.', 400);
+    }
+    if (fin < inicio) {
+      fin += MINUTOS_DIA;
     }
     return { hora_inicio: t.hora_inicio, hora_fin: t.hora_fin, inicio, fin };
   });
@@ -148,6 +178,10 @@ async function bulkUpdateHorario(user, body) {
   const empIdsToUpdate = [...new Set(cambios.map(c => c.id_empleado))];
 
   if (user.rol === 'TIENDA') {
+    const idEmpleadoPropio = empleadoPropioDe(user);
+    if (idEmpleadoPropio && empIdsToUpdate.some((id) => id !== idEmpleadoPropio)) {
+      throw new AppError('Acceso denegado: solo puedes registrar tu propio horario.', 403);
+    }
     await verificarEmpleadosDeTienda(empIdsToUpdate, user.id_tienda);
 
     // Mientras la semana no tenga horario oficial confirmado, la tienda edita
@@ -203,6 +237,7 @@ async function crearSolicitud(user, semanaInicioInput, bodyIdTienda, motivoInput
     throw new AppError('No se pueden crear solicitudes para semanas pasadas.', 400);
   }
 
+  const idEmpleadoPropio = empleadoPropioDe(user);
   const periodo = await horariosRepository.getSemana(idTienda, semanaInicio);
   let motivo;
   let cambios;
@@ -216,6 +251,9 @@ async function crearSolicitud(user, semanaInicioInput, bodyIdTienda, motivoInput
       throw new AppError('No hay cambios que enviar.', 400);
     }
     const empIds = [...new Set(cambiosInput.map(c => c.id_empleado))];
+    if (idEmpleadoPropio && empIds.some((id) => id !== idEmpleadoPropio)) {
+      throw new AppError('Acceso denegado: solo puedes enviar tu propio horario.', 403);
+    }
     await verificarEmpleadosDeTienda(empIds, idTienda);
     cambios = cambiosInput.map(c => ({
       id_empleado: c.id_empleado,
@@ -225,7 +263,9 @@ async function crearSolicitud(user, semanaInicioInput, bodyIdTienda, motivoInput
   } else {
     motivo = (motivoInput || '').trim() || autoMotivo(semanaInicio, weekDates);
     const empleados = await empleadosRepository.getActiveEmpleados(idTienda, semanaInicio);
-    const empIds = empleados.map(e => e.id_empleado);
+    const empIds = empleados
+      .map(e => e.id_empleado)
+      .filter(id => !idEmpleadoPropio || id === idEmpleadoPropio);
     const turnoRecords = empIds.length ? await horariosRepository.findTurnosForFechas(weekDates, empIds) : [];
     const agrupado = {};
     turnoRecords.forEach(rec => {
@@ -236,12 +276,64 @@ async function crearSolicitud(user, semanaInicioInput, bodyIdTienda, motivoInput
     cambios = Object.values(agrupado);
   }
 
-  await horariosRepository.crearSolicitud(idTienda, semanaInicio, motivo, user.id_usuario, cambios);
+  await withTransaction((txQuery) =>
+    horariosRepository.crearSolicitud(idTienda, semanaInicio, motivo, user.id_usuario, cambios, txQuery)
+  );
 
   return { message: 'Horario enviado para aprobación. Un Admin/Supervisor/RRHH debe confirmarlo para que quede oficial.' };
 }
 
-async function resolverSolicitudService(user, idSolicitud, aprobar, comentario, cambiosFinales) {
+// La tienda corrige su propia solicitud mientras siga pendiente. Se actualiza
+// la misma solicitud en vez de borrar y crear otra: así el id que el admin
+// tiene abierto sigue siendo válido y la condición "estado = PENDIENTE" del
+// UPDATE decide quién gana si ambos actúan a la vez.
+async function actualizarSolicitud(user, idSolicitud, motivoInput, cambiosInput) {
+  const solicitud = await horariosRepository.findSolicitudById(idSolicitud);
+  if (!solicitud) {
+    throw new AppError('Solicitud no encontrada.', 404);
+  }
+  if (user.rol === 'TIENDA' && solicitud.id_tienda !== user.id_tienda) {
+    throw new AppError('Acceso denegado: la solicitud es de otra sede.', 403);
+  }
+  if (solicitud.estado !== 'PENDIENTE') {
+    throw new AppError(
+      `Esta solicitud ya fue ${solicitud.estado === 'APROBADA' ? 'aprobada' : 'rechazada'}. Recarga la página para ver el horario vigente.`,
+      409
+    );
+  }
+  if (!Array.isArray(cambiosInput) || cambiosInput.length === 0) {
+    throw new AppError('No hay cambios que enviar.', 400);
+  }
+
+  const empIds = [...new Set(cambiosInput.map(c => c.id_empleado))];
+  const idEmpleadoPropio = empleadoPropioDe(user);
+  if (idEmpleadoPropio && empIds.some((id) => id !== idEmpleadoPropio)) {
+    throw new AppError('Acceso denegado: solo puedes enviar tu propio horario.', 403);
+  }
+  await verificarEmpleadosDeTienda(empIds, solicitud.id_tienda);
+
+  const motivo = (motivoInput || '').trim() || solicitud.motivo;
+  const cambios = cambiosInput.map(c => ({
+    id_empleado: c.id_empleado,
+    fecha: c.fecha,
+    turnos: validarBloquesTurno(c.turnos || [])
+  }));
+
+  const actualizada = await withTransaction((txQuery) =>
+    horariosRepository.actualizarSolicitudPendiente(idSolicitud, motivo, cambios, txQuery)
+  );
+
+  if (!actualizada) {
+    throw new AppError(
+      'La solicitud dejó de estar pendiente mientras la editabas: un Admin/Supervisor/RRHH acaba de resolverla. Recarga para ver el horario vigente.',
+      409
+    );
+  }
+
+  return { message: 'Solicitud actualizada y reenviada para aprobación.' };
+}
+
+async function resolverSolicitudService(user, idSolicitud, aprobar, comentario, cambiosFinales, versionEsperada) {
   const solicitud = await horariosRepository.findSolicitudById(idSolicitud);
   if (!solicitud) {
     throw new AppError('Solicitud no encontrada.', 404);
@@ -251,24 +343,42 @@ async function resolverSolicitudService(user, idSolicitud, aprobar, comentario, 
   }
 
   const nuevoEstado = aprobar ? 'APROBADA' : 'RECHAZADA';
-  await horariosRepository.resolverSolicitud(idSolicitud, nuevoEstado, user.id_usuario, comentario || null);
+  const cambios = aprobar
+    ? (Array.isArray(cambiosFinales) && cambiosFinales.length > 0
+        ? cambiosFinales
+        : await horariosRepository.getCambiosDeSolicitud(idSolicitud))
+    : [];
 
-  if (aprobar) {
-    const cambios = Array.isArray(cambiosFinales) && cambiosFinales.length > 0
-      ? cambiosFinales
-      : await horariosRepository.getCambiosDeSolicitud(idSolicitud);
+  // Todo ocurre en una sola transacción y empieza por el cambio de estado,
+  // que solo prospera si la solicitud sigue pendiente. Si la tienda la
+  // reemplazó o alguien más la resolvió en el intermedio, no se aplica ningún
+  // turno: se aborta entera y se avisa.
+  await withTransaction(async (txQuery) => {
+    const gano = await horariosRepository.resolverSolicitud(idSolicitud, nuevoEstado, user.id_usuario, comentario || null, versionEsperada, txQuery);
+    if (gano.length === 0) {
+      throw new AppError('La solicitud cambió mientras la revisabas: la tienda la corrigió o alguien más la resolvió. Ciérrala y vuelve a abrirla para ver la versión vigente.', 409);
+    }
 
-    await withTransaction(async (txQuery) => {
-      for (const cambio of cambios) {
-        const bloques = validarBloquesTurno(cambio.turnos || []);
-        await horariosRepository.deleteTurnosForDia(cambio.id_empleado, cambio.fecha, txQuery);
-        for (const bloque of bloques) {
-          await horariosRepository.insertTurno(cambio.id_empleado, cambio.fecha, bloque.hora_inicio, bloque.hora_fin, user.id_usuario, txQuery);
-        }
+    if (!aprobar) return;
+
+    for (const cambio of cambios) {
+      const bloques = validarBloquesTurno(cambio.turnos || []);
+      await horariosRepository.deleteTurnosForDia(cambio.id_empleado, cambio.fecha, txQuery);
+      for (const bloque of bloques) {
+        await horariosRepository.insertTurno(cambio.id_empleado, cambio.fecha, bloque.hora_inicio, bloque.hora_fin, user.id_usuario, txQuery);
       }
-      await horariosRepository.marcarConfirmado(solicitud.id_tienda, solicitud.semana_inicio, user.id_usuario, txQuery);
-    });
-  }
+    }
+    await horariosRepository.marcarConfirmado(solicitud.id_tienda, solicitud.semana_inicio, user.id_usuario, txQuery);
+
+    // El horario oficial es la fuente del capacity: al quedar confirmada la
+    // semana, se marca 1 en los días con turno y 0 en los que no.
+    await capacityService.sincronizarCapacityDesdeHorario(
+      solicitud.id_tienda,
+      solicitud.semana_inicio,
+      user.id_usuario,
+      txQuery
+    );
+  });
 
   return {
     message: aprobar
@@ -295,6 +405,10 @@ async function updateDiaDescanso(user, idEmpleado, diaDescanso) {
   if (user.rol === 'TIENDA' && emp.id_tienda !== user.id_tienda) {
     throw new AppError('Acceso denegado: Intento no autorizado de editar colaborador de otra sede.', 403);
   }
+  const idEmpleadoPropio = empleadoPropioDe(user);
+  if (idEmpleadoPropio && idEmpleado !== idEmpleadoPropio) {
+    throw new AppError('Acceso denegado: solo puedes editar tu propio registro.', 403);
+  }
 
   const valor = diaDescanso ? String(diaDescanso).trim().toUpperCase() : null;
   if (valor && !DIAS_DESCANSO_VALIDOS.includes(valor)) {
@@ -305,8 +419,74 @@ async function updateDiaDescanso(user, idEmpleado, diaDescanso) {
   return { message: 'Día de descanso actualizado.' };
 }
 
+const TIPOS_NOVEDAD = ['VACACIONES', 'DESCANSO_MEDICO', 'FALTA', 'PERMISO', 'LICENCIA'];
+
+// Una tienda solo puede registrar novedades de su propio equipo; una cuenta
+// personal (Oficina/Logística), solo las suyas.
+async function assertPuedeGestionarEmpleado(user, idEmpleado) {
+  const emp = await empleadosRepository.findById(idEmpleado);
+  if (!emp) {
+    throw new AppError('Colaborador no encontrado.', 404);
+  }
+  if (user.rol === 'TIENDA') {
+    if (emp.id_tienda !== user.id_tienda) {
+      throw new AppError('Acceso denegado: colaborador de otra sede.', 403);
+    }
+    const idEmpleadoPropio = empleadoPropioDe(user);
+    if (idEmpleadoPropio && idEmpleado !== idEmpleadoPropio) {
+      throw new AppError('Acceso denegado: solo puedes registrar tus propias novedades.', 403);
+    }
+  }
+  return emp;
+}
+
+function listarNovedades(user, idEmpleado) {
+  return assertPuedeGestionarEmpleado(user, idEmpleado).then(() => novedadesRepository.findByEmpleado(idEmpleado));
+}
+
+async function crearNovedad(user, { id_empleado, tipo, fecha_inicio, fecha_fin, con_goce, observacion }) {
+  const idEmpleado = parseInt(id_empleado, 10);
+  await assertPuedeGestionarEmpleado(user, idEmpleado);
+
+  if (!TIPOS_NOVEDAD.includes(tipo)) {
+    throw new AppError('Tipo de novedad inválido.', 400);
+  }
+  if (!FECHA_REGEX.test(fecha_inicio || '') || !FECHA_REGEX.test(fecha_fin || '')) {
+    throw new AppError('Debes indicar fechas válidas (YYYY-MM-DD).', 400);
+  }
+  if (fecha_fin < fecha_inicio) {
+    throw new AppError('La fecha de fin no puede ser anterior a la de inicio.', 400);
+  }
+
+  await novedadesRepository.insert({
+    idEmpleado,
+    tipo,
+    fechaInicio: fecha_inicio,
+    fechaFin: fecha_fin,
+    conGoce: con_goce !== false,
+    observacion: observacion ? String(observacion).trim() : null,
+    registradoPor: user.id_usuario
+  });
+
+  return { message: 'Novedad registrada.' };
+}
+
+async function eliminarNovedad(user, idNovedad) {
+  const novedad = await novedadesRepository.findById(idNovedad);
+  if (!novedad) {
+    throw new AppError('Novedad no encontrada.', 404);
+  }
+  await assertPuedeGestionarEmpleado(user, novedad.id_empleado);
+  await novedadesRepository.remove(idNovedad);
+  return { message: 'Novedad eliminada.' };
+}
+
 module.exports = {
   getHorarioSemana,
+  listarNovedades,
+  crearNovedad,
+  eliminarNovedad,
+  actualizarSolicitud,
   bulkUpdateHorario,
   crearSolicitud,
   resolverSolicitudService,

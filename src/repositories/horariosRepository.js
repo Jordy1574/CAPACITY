@@ -14,7 +14,7 @@ function marcarConfirmado(idTienda, semanaInicio, idUsuario, queryFn = query) {
   );
 }
 
-function findTurnosForFechas(fechas, empIds) {
+function findTurnosForFechas(fechas, empIds, queryFn = query) {
   const fechaPlaceholders = fechas.map((_, i) => `$${i + 1}`).join(',');
   const empPlaceholders = empIds.map((_, i) => `$${fechas.length + i + 1}`).join(',');
   const sql = `
@@ -23,7 +23,7 @@ function findTurnosForFechas(fechas, empIds) {
     WHERE CAST(fecha AS TEXT) IN (${fechaPlaceholders}) AND id_empleado IN (${empPlaceholders})
     ORDER BY hora_inicio ASC
   `;
-  return query(sql, [...fechas, ...empIds]);
+  return queryFn(sql, [...fechas, ...empIds]);
 }
 
 function deleteTurnosForDia(idEmpleado, fecha, queryFn = query) {
@@ -68,32 +68,33 @@ async function getCambiosDeSolicitud(idSolicitud) {
   }));
 }
 
-async function eliminarSolicitud(idSolicitud) {
-  await query('DELETE FROM horario_solicitud_turnos WHERE id_solicitud = $1', [idSolicitud]);
-  await query('DELETE FROM horario_solicitud_dias WHERE id_solicitud = $1', [idSolicitud]);
-  await query('DELETE FROM horario_solicitudes WHERE id_solicitud = $1', [idSolicitud]);
+// Borra la pendiente de esa tienda+semana, si la hay. El filtro por estado va
+// dentro del propio DELETE: si un admin acaba de aprobarla, ya no es pendiente
+// y no se toca, para no borrar el registro de una aprobación. Los turnos y
+// días de detalle caen por ON DELETE CASCADE.
+function eliminarSolicitudPendiente(idTienda, semanaInicio, queryFn = query) {
+  return queryFn(
+    "DELETE FROM horario_solicitudes WHERE id_tienda = $1 AND semana_inicio = $2 AND estado = 'PENDIENTE'",
+    [idTienda, semanaInicio]
+  );
 }
 
-async function eliminarSolicitudPendiente(idTienda, semanaInicio) {
-  const existente = await getSolicitudPendiente(idTienda, semanaInicio);
-  if (existente) {
-    await eliminarSolicitud(existente.id_solicitud);
-  }
-}
+// Reemplaza la solicitud pendiente por una nueva, todo en una transacción para
+// que nunca queden dos pendientes de la misma semana ni se pierda la anterior
+// sin haber creado la nueva.
+async function crearSolicitud(idTienda, semanaInicio, motivo, idUsuario, cambios, queryFn = query) {
+  await eliminarSolicitudPendiente(idTienda, semanaInicio, queryFn);
 
-async function crearSolicitud(idTienda, semanaInicio, motivo, idUsuario, cambios) {
-  await eliminarSolicitudPendiente(idTienda, semanaInicio);
-
-  const rows = await query(
+  const rows = await queryFn(
     "INSERT INTO horario_solicitudes (id_tienda, semana_inicio, motivo, estado, solicitado_por) VALUES ($1, $2, $3, 'PENDIENTE', $4) RETURNING id_solicitud",
     [idTienda, semanaInicio, motivo, idUsuario]
   );
   const idSolicitud = rows[0].id_solicitud;
 
   for (const cambio of cambios) {
-    await query('INSERT INTO horario_solicitud_dias (id_solicitud, id_empleado, fecha) VALUES ($1, $2, $3)', [idSolicitud, cambio.id_empleado, cambio.fecha]);
+    await queryFn('INSERT INTO horario_solicitud_dias (id_solicitud, id_empleado, fecha) VALUES ($1, $2, $3)', [idSolicitud, cambio.id_empleado, cambio.fecha]);
     for (const bloque of cambio.turnos) {
-      await query(
+      await queryFn(
         'INSERT INTO horario_solicitud_turnos (id_solicitud, id_empleado, fecha, hora_inicio, hora_fin) VALUES ($1, $2, $3, $4, $5)',
         [idSolicitud, cambio.id_empleado, cambio.fecha, bloque.hora_inicio, bloque.hora_fin]
       );
@@ -107,10 +108,10 @@ function findSolicitudesConJoins({ idTienda, estado }) {
   let sql = `
     SELECT
       s.id_solicitud, s.id_tienda, s.semana_inicio, s.motivo, s.estado,
-      s.fecha_solicitud, s.fecha_resolucion, s.comentario_resolucion,
+      s.fecha_solicitud, s.fecha_resolucion, s.comentario_resolucion, s.version,
       t.nombre_tienda, t.codigo_almacen,
-      us.email AS solicitado_por_email,
-      ur.email AS resuelto_por_email
+      COALESCE(us.email, us.username) AS solicitado_por_email,
+      COALESCE(ur.email, ur.username) AS resuelto_por_email
     FROM horario_solicitudes s
     INNER JOIN tiendas t ON t.id_tienda = s.id_tienda
     LEFT JOIN usuarios us ON us.id_usuario = s.solicitado_por
@@ -139,13 +140,49 @@ async function findSolicitudById(id) {
   return rows[0] || null;
 }
 
-function resolverSolicitud(id, nuevoEstado, idUsuario, comentario) {
-  return query(
+// La condición "estado = 'PENDIENTE'" dentro del propio UPDATE es lo que
+// evita la carrera: si otro ya la resolvió (o la tienda la reemplazó), no
+// coincide ninguna fila y devuelve vacío en vez de pisar el resultado.
+// Devuelve las filas afectadas: 1 = ganó esta operación, 0 = alguien se adelantó.
+function resolverSolicitud(id, nuevoEstado, idUsuario, comentario, versionEsperada, queryFn = query) {
+  // La versión evita aprobar contenido viejo: si la tienda corrigió la
+  // solicitud mientras el admin la revisaba, la versión subió y el UPDATE no
+  // coincide, así que la aprobación se rechaza en vez de aplicar lo anterior.
+  const filtraVersion = versionEsperada !== undefined && versionEsperada !== null;
+  return queryFn(
     `UPDATE horario_solicitudes
      SET estado = $1, resuelto_por = $2, fecha_resolucion = CURRENT_TIMESTAMP, comentario_resolucion = $3
-     WHERE id_solicitud = $4`,
-    [nuevoEstado, idUsuario, comentario, id]
+     WHERE id_solicitud = $4 AND estado = 'PENDIENTE'${filtraVersion ? ' AND version = $5' : ''}
+     RETURNING id_solicitud`,
+    filtraVersion ? [nuevoEstado, idUsuario, comentario, id, versionEsperada] : [nuevoEstado, idUsuario, comentario, id]
   );
+}
+
+// Reemplaza el contenido de una solicitud que sigue pendiente. Mismo criterio:
+// el UPDATE solo entra si nadie la resolvió todavía.
+async function actualizarSolicitudPendiente(idSolicitud, motivo, cambios, queryFn = query) {
+  const filas = await queryFn(
+    `UPDATE horario_solicitudes
+     SET motivo = $1, fecha_solicitud = CURRENT_TIMESTAMP, version = version + 1
+     WHERE id_solicitud = $2 AND estado = 'PENDIENTE'
+     RETURNING id_solicitud, version`,
+    [motivo, idSolicitud]
+  );
+  if (filas.length === 0) return false;
+
+  await queryFn('DELETE FROM horario_solicitud_turnos WHERE id_solicitud = $1', [idSolicitud]);
+  await queryFn('DELETE FROM horario_solicitud_dias WHERE id_solicitud = $1', [idSolicitud]);
+
+  for (const cambio of cambios) {
+    await queryFn('INSERT INTO horario_solicitud_dias (id_solicitud, id_empleado, fecha) VALUES ($1, $2, $3)', [idSolicitud, cambio.id_empleado, cambio.fecha]);
+    for (const bloque of cambio.turnos) {
+      await queryFn(
+        'INSERT INTO horario_solicitud_turnos (id_solicitud, id_empleado, fecha, hora_inicio, hora_fin) VALUES ($1, $2, $3, $4, $5)',
+        [idSolicitud, cambio.id_empleado, cambio.fecha, bloque.hora_inicio, bloque.hora_fin]
+      );
+    }
+  }
+  return true;
 }
 
 module.exports = {
@@ -157,8 +194,9 @@ module.exports = {
   getSolicitudPendiente,
   getCambiosDeSolicitud,
   crearSolicitud,
-  eliminarSolicitud,
+  eliminarSolicitudPendiente,
   findSolicitudesConJoins,
   findSolicitudById,
-  resolverSolicitud
+  resolverSolicitud,
+  actualizarSolicitudPendiente
 };

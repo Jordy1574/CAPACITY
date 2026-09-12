@@ -23,6 +23,14 @@ async function horariosRoutes(fastify, options) {
     return reply.send(result);
   });
 
+  // PUT /api/horarios/solicitudes/:id - La tienda corrige su solicitud mientras siga pendiente
+  fastify.put('/api/horarios/solicitudes/:id', { onRequest: [authenticate] }, async (request, reply) => {
+    const idSolicitud = parseInt(request.params.id, 10);
+    const { motivo, cambios } = request.body || {};
+    const result = await horariosService.actualizarSolicitud(request.user, idSolicitud, motivo, cambios);
+    return reply.send(result);
+  });
+
   // GET /api/horarios/solicitudes?estado=PENDIENTE - Bandeja de solicitudes (Admin/Supervisor/RRHH ven todas)
   fastify.get('/api/horarios/solicitudes', { onRequest: [authenticate] }, async (request, reply) => {
     const solicitudes = await horariosService.listSolicitudes(request.user, request.query);
@@ -34,8 +42,44 @@ async function horariosRoutes(fastify, options) {
     onRequest: [authenticate, requireRole(...ROLES_ADMIN)]
   }, async (request, reply) => {
     const idSolicitud = parseInt(request.params.id, 10);
-    const { aprobar, comentario, cambios } = request.body || {};
-    const result = await horariosService.resolverSolicitudService(request.user, idSolicitud, aprobar, comentario, cambios);
+    const { aprobar, comentario, cambios, version } = request.body || {};
+    const result = await horariosService.resolverSolicitudService(request.user, idSolicitud, aprobar, comentario, cambios, version);
+    return reply.send(result);
+  });
+
+  // GET /api/horarios/empleados/:id/novedades - Vacaciones, descanso médico, faltas, permisos y licencias
+  fastify.get('/api/horarios/empleados/:id/novedades', { onRequest: [authenticate] }, async (request, reply) => {
+    const idEmpleado = parseInt(request.params.id, 10);
+    const novedades = await horariosService.listarNovedades(request.user, idEmpleado);
+    return reply.send({ novedades });
+  });
+
+  // POST /api/horarios/novedades - Registra una novedad para un rango de fechas
+  fastify.post('/api/horarios/novedades', {
+    onRequest: [authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['id_empleado', 'tipo', 'fecha_inicio', 'fecha_fin'],
+        properties: {
+          id_empleado: {},
+          tipo: { type: 'string', enum: ['VACACIONES', 'DESCANSO_MEDICO', 'FALTA', 'PERMISO', 'LICENCIA'] },
+          fecha_inicio: { type: 'string' },
+          fecha_fin: { type: 'string' },
+          con_goce: { type: 'boolean' },
+          observacion: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const result = await horariosService.crearNovedad(request.user, request.body);
+    return reply.send(result);
+  });
+
+  // DELETE /api/horarios/novedades/:id
+  fastify.delete('/api/horarios/novedades/:id', { onRequest: [authenticate] }, async (request, reply) => {
+    const idNovedad = parseInt(request.params.id, 10);
+    const result = await horariosService.eliminarNovedad(request.user, idNovedad);
     return reply.send(result);
   });
 
