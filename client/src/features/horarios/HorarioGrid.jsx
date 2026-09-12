@@ -5,10 +5,18 @@ import { EMPLOYEE_COLOR_PALETTE, coverageForHour, calcularHorasTotales, formatRa
 // lo que se edita queda como una propuesta local (solicitud de cambio) en vez
 // de guardarse en vivo — la decisión de a dónde va el guardado la toma quien
 // use este componente (HorariosPage / SolicitudReviewOverlay), no la grilla.
+function turnosDelDia(emp, dayStr, pendingChanges) {
+  const key = `${emp.id_empleado}_${dayStr}`;
+  return (pendingChanges[key] !== undefined ? pendingChanges[key].turnos : emp.dias[dayStr]) || [];
+}
+
 // El descanso semanal declarado se pinta en la columna de ese colaborador,
-// para que se vea de un vistazo quién libra cada día.
-function esDiaDeDescanso(emp, dayStr) {
+// pero solo si ese día no tiene turnos: si la persona está trabajando ya no
+// descansa, y marcarlo igual haría que la grilla se contradiga a sí misma.
+// El conflicto entre lo declarado y lo programado se avisa en el resumen.
+function esDiaDeDescanso(emp, dayStr, pendingChanges) {
   if (!emp.dia_descanso) return false;
+  if (turnosDelDia(emp, dayStr, pendingChanges).length > 0) return false;
   return new Date(`${dayStr}T00:00:00`).getDay() === DIA_DESCANSO_A_INDICE[emp.dia_descanso];
 }
 
@@ -84,7 +92,7 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
                   {empleados.map((emp) => {
                     const color = empColors[emp.id_empleado];
                     const isPending = pendingChanges[`${emp.id_empleado}_${dayStr}`] !== undefined;
-                    const descansa = esDiaDeDescanso(emp, dayStr);
+                    const descansa = esDiaDeDescanso(emp, dayStr, pendingChanges);
                     return (
                       <th
                         key={`${dayStr}-${emp.id_empleado}`}
@@ -129,7 +137,7 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
                         const blocks = isPending ? pendingChanges[key].turnos : emp.dias[dayStr];
                         const coverage = coverageForHour(blocks, hour * 60);
                         const color = empColors[emp.id_empleado];
-                        const descansa = esDiaDeDescanso(emp, dayStr);
+                        const descansa = esDiaDeDescanso(emp, dayStr, pendingChanges);
 
                         let style = descansa ? { backgroundColor: '#F3F4F6' } : {};
                         let text = '';
@@ -171,7 +179,7 @@ export default function HorarioGrid({ weekDates, empleados, pendingChanges, onCe
                     const isPending = pendingChanges[key] !== undefined;
                     const blocks = isPending ? pendingChanges[key].turnos : emp.dias[dayStr];
                     const total = calcularHorasTotales(blocks);
-                    const descansa = esDiaDeDescanso(emp, dayStr);
+                    const descansa = esDiaDeDescanso(emp, dayStr, pendingChanges);
                     return (
                       <td
                         key={`total-${dayStr}-${emp.id_empleado}`}
