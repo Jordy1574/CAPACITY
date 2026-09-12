@@ -2,7 +2,7 @@ const { query } = require('../config/db');
 
 // Empleados ACTIVOS + empleados INACTIVOS cuya fecha_baja sea en el mes actual o posterior
 // (gestión de alta rotación: no desaparecen de meses donde sí trabajaron).
-function getActiveEmpleados(idTienda, firstDayOfMonth) {
+function getActiveEmpleados(idTienda, firstDayOfMonth, queryFn = query) {
   const sql = `
     SELECT
       id_empleado,
@@ -16,29 +16,30 @@ function getActiveEmpleados(idTienda, firstDayOfMonth) {
       situacion,
       CAST(fecha_baja AS TEXT) AS fecha_baja,
       dia_descanso,
+      horas_semana,
       id_tienda
     FROM empleados
     WHERE id_tienda = $1
       AND (
-        situacion = 'ACTIVO'
+        situacion IN ('ACTIVO', 'NO_COMISIONA')
         OR (situacion = 'INACTIVO' AND (fecha_baja IS NULL OR CAST(fecha_baja AS TEXT) >= $2))
       )
     ORDER BY
-      CASE WHEN situacion = 'ACTIVO' THEN 1 ELSE 2 END ASC,
+      CASE WHEN situacion <> 'INACTIVO' THEN 1 ELSE 2 END ASC,
       CASE WHEN codigo_empleado IS NULL THEN 1 ELSE 0 END ASC,
       codigo_empleado ASC,
       nombre_completo ASC
   `;
-  return query(sql, [idTienda, firstDayOfMonth]);
+  return queryFn(sql, [idTienda, firstDayOfMonth]);
 }
 
 async function findById(idEmpleado) {
-  const rows = await query('SELECT id_empleado, id_tienda FROM empleados WHERE id_empleado = $1', [idEmpleado]);
+  const rows = await query('SELECT id_empleado, id_tienda, nombre_completo, dni FROM empleados WHERE id_empleado = $1', [idEmpleado]);
   return rows[0] || null;
 }
 
 async function findByDni(dni) {
-  const rows = await query('SELECT id_empleado FROM empleados WHERE dni = $1', [dni]);
+  const rows = await query('SELECT id_empleado, id_tienda, nombre_completo FROM empleados WHERE dni = $1', [dni]);
   return rows[0] || null;
 }
 
@@ -51,6 +52,7 @@ function insert(data) {
   const insertSql = `
     INSERT INTO empleados (dni, codigo_empleado, nombre_completo, puesto, regimen, celular, correo_asesor, id_tienda, situacion)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVO')
+    RETURNING id_empleado
   `;
   return query(insertSql, [
     data.dni,
@@ -75,8 +77,9 @@ function update(idEmpleado, data) {
         correo_asesor = $6,
         codigo_empleado = $7,
         situacion = COALESCE($8, situacion),
-        fecha_baja = $9
-    WHERE id_empleado = $10
+        fecha_baja = $9,
+        horas_semana = $10
+    WHERE id_empleado = $11
   `;
   return query(updateSql, [
     data.dni,
@@ -88,6 +91,7 @@ function update(idEmpleado, data) {
     data.codigo_empleado,
     data.situacion,
     data.fecha_baja,
+    data.horas_semana,
     idEmpleado
   ]);
 }

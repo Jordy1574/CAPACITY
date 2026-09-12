@@ -14,20 +14,22 @@ function DayHeader({ dayStr }) {
   );
 }
 
-function DayCell({ value, isPending, onClick }) {
+// La celda ya no se edita: refleja el horario oficial (1 trabaja / 0 no).
+function DayCell({ value }) {
+  const vacio = value === null || value === undefined;
   return (
     <td className="p-1 border-b border-gray-100 text-center align-middle">
       <div
-        onClick={onClick}
-        className={`capacity-cell h-8 w-8 mx-auto rounded-lg flex items-center justify-center text-xs ${getBadgeClass(value)} ${isPending ? 'cell-modified' : ''}`}
+        className={`h-8 w-8 mx-auto rounded-lg flex items-center justify-center text-xs ${getBadgeClass(value)}`}
+        title={vacio ? 'Sin horario oficial para este día' : undefined}
       >
-        {value !== null && value !== undefined ? Number(value).toFixed(1) : '-'}
+        {vacio ? '-' : Number(value) > 0 ? '1' : '0'}
       </div>
     </td>
   );
 }
 
-export default function CapacityTable({ data, pendingChanges, onCellClick, onEditEmployee }) {
+export default function CapacityTable({ data, onEditEmployee }) {
   const days = data?.dias_mes || [];
   const empleados = data?.empleados || [];
 
@@ -41,6 +43,7 @@ export default function CapacityTable({ data, pendingChanges, onCellClick, onEdi
               <th className="p-3 sticky-col-2 border-b border-gray-200 min-w-[110px] bg-gray-50 text-center">Código Asesor</th>
               <th className="p-3 border-b border-gray-200 min-w-[140px] bg-gray-50">Puesto</th>
               <th className="p-3 border-b border-gray-200 min-w-[80px] text-center bg-gray-50">Régimen</th>
+              <th className="p-3 border-b border-gray-200 min-w-[80px] text-center bg-gray-50">Dotación</th>
               <th className="p-3 border-b border-gray-200 min-w-[90px] text-center bg-gray-50">Acciones</th>
               {days.map((d) => (
                 <DayHeader key={d} dayStr={d} />
@@ -50,13 +53,14 @@ export default function CapacityTable({ data, pendingChanges, onCellClick, onEdi
           <tbody className="text-xs divide-y divide-gray-100">
             {empleados.length === 0 && (
               <tr>
-                <td colSpan={days.length + 5} className="text-center py-10 text-gray-400 font-medium">
+                <td colSpan={days.length + 6} className="text-center py-10 text-gray-400 font-medium">
                   No hay colaboradores registrados en esta tienda para el mes seleccionado.
                 </td>
               </tr>
             )}
             {empleados.map((emp) => {
               const isInactive = emp.situacion === 'INACTIVO';
+              const noComisiona = emp.situacion === 'NO_COMISIONA';
               return (
                 <tr key={emp.id_empleado} className={`hover:bg-gray-50/80 transition-colors ${isInactive ? 'bg-red-50/30' : ''}`}>
                   <td className="p-3 sticky-col-1 border-b border-gray-100 font-medium text-gray-900 bg-white">
@@ -64,6 +68,11 @@ export default function CapacityTable({ data, pendingChanges, onCellClick, onEdi
                       <div className={`font-bold text-xs ${isInactive ? 'text-red-700 line-through' : 'text-gray-900'}`}>
                         {emp.nombre_completo}
                         {isInactive && <span className="ml-1 text-[9px] px-1 bg-red-100 text-red-800 rounded font-normal no-underline">INACTIVO</span>}
+                        {noComisiona && (
+                          <span className="ml-1 text-[9px] px-1 bg-amber-100 text-amber-800 rounded font-normal" title="No comisiona: sus días de capacity quedan siempre en 0">
+                            NO COMISIONA
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] text-gray-400 font-mono">
                         DNI: {emp.dni} {emp.celular ? ` | Cel: ${emp.celular}` : ''}
@@ -85,10 +94,13 @@ export default function CapacityTable({ data, pendingChanges, onCellClick, onEdi
                       className={`px-2 py-0.5 text-[10px] font-bold rounded-lg ${
                         emp.regimen === 'FT' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-purple-50 text-purple-700 border border-purple-200'
                       }`}
-                      title={emp.regimen === 'FT' ? 'Full Time (1.0 -> 0.0 -> 0.5 -> Vacío)' : 'Part Time (0.5 -> 0.0 -> 1.0 -> Vacío)'}
+                      title={emp.regimen === 'PT' ? 'Part Time — dotación 0.5' : 'Full Time — dotación 1'}
                     >
                       {emp.regimen || 'FT'}
                     </span>
+                  </td>
+                  <td className="p-3 border-b border-gray-100 text-center font-mono font-bold text-gray-900 text-xs">
+                    {Number(emp.dotacion ?? (emp.regimen === 'PT' ? 0.5 : 1)).toFixed(1)}
                   </td>
                   <td className="p-3 border-b border-gray-100 text-center">
                     <button
@@ -102,19 +114,9 @@ export default function CapacityTable({ data, pendingChanges, onCellClick, onEdi
                       <span>Editar</span>
                     </button>
                   </td>
-                  {days.map((dayStr) => {
-                    const key = `${emp.id_empleado}_${dayStr}`;
-                    const isPending = pendingChanges[key] !== undefined;
-                    const currentVal = isPending ? pendingChanges[key].valor : emp.dias[dayStr];
-                    return (
-                      <DayCell
-                        key={dayStr}
-                        value={currentVal}
-                        isPending={isPending}
-                        onClick={() => onCellClick(emp.id_empleado, dayStr, emp.dias[dayStr], emp.regimen)}
-                      />
-                    );
-                  })}
+                  {days.map((dayStr) => (
+                    <DayCell key={dayStr} value={emp.dias[dayStr]} />
+                  ))}
                 </tr>
               );
             })}

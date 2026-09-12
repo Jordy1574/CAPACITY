@@ -50,4 +50,17 @@ function todayStr() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-module.exports = { getDaysInMonth, addDaysToDateStr, getMondayOf, getWeekDates, todayStr };
+// Minutos desde medianoche de una hora 'HH:MM'.
+function horaAMinutos(hora) {
+  const [h, m] = String(hora).split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Mes calendario actual en formato 'YYYY-MM'. Se arma con las partes locales
+// y no con toISOString(), que usa UTC y adelantaría el mes los últimos días.
+function mesActual() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+module.exports = { getDaysInMonth, addDaysToDateStr, getMondayOf, getWeekDates, todayStr, mesActual, horaAMinutos };

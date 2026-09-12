@@ -41,10 +41,32 @@ async function capacityRoutes(fastify, options) {
     return reply.send(result);
   });
 
-  // PUT /api/capacity/bulk-update
-  fastify.put('/api/capacity/bulk-update', { onRequest: [authenticate] }, async (request, reply) => {
-    const result = await capacityService.bulkUpdateCapacity(request.user, request.body);
-    return reply.send(result);
+  // GET /api/capacity/export.csv?mes=2026-09 - Descarga la matriz del mes para Excel
+  fastify.get('/api/capacity/export.csv', { onRequest: [authenticate] }, async (request, reply) => {
+    const { csv, nombreArchivo } = await capacityService.exportCapacityCsv(request.user, request.query.mes, request.query.id_tienda);
+    return reply
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="${nombreArchivo}"`)
+      .send(csv);
+  });
+
+  // --- API de consumo (v1) ---
+  // Autenticación: Authorization: Bearer <API_KEY_EXPORT>. Se sigue aceptando
+  // ?api_key= por compatibilidad con las conexiones de Power Query ya armadas,
+  // pero el header es el camino recomendado: la query string queda registrada
+  // en logs, historial y proxies.
+
+  // GET /api/v1/capacity/resumen?mes=2026-09[&id_tienda=] - Una fila por
+  // colaborador con sus días trabajados, para liquidar bonos.
+  fastify.get('/api/v1/capacity/resumen', { onRequest: [authenticateExport] }, async (request, reply) => {
+    const data = await capacityService.getResumenMensual(request.query.mes, request.query.id_tienda);
+    return reply.send(data);
+  });
+
+  // GET /api/v1/capacity/diario?mes=2026-09[&id_tienda=] - Detalle día por día.
+  fastify.get('/api/v1/capacity/diario', { onRequest: [authenticateExport] }, async (request, reply) => {
+    const filas = await capacityService.exportCapacity(request.query.mes, request.query.id_tienda);
+    return reply.send({ mes: request.query.mes, generado_en: new Date().toISOString(), registros: filas });
   });
 
   // GET /api/capacity/export?mes=2026-08 (Para Power Query / Power BI)

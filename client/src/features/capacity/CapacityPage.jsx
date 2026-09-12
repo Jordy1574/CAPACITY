@@ -2,19 +2,21 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { useSelectedStore } from '../../store/SelectedStoreContext';
 import { useTiendas } from '../../api/useTiendas';
-import { bulkUpdateCapacity, createEmpleado, updateEmpleado } from '../../api/capacity';
+import { createEmpleado, descargarCapacityCsv, updateEmpleado } from '../../api/capacity';
 import { useToast } from '../../hooks/useToast';
 import { ROLES_ADMIN } from '../../lib/constants';
 import StoreHeaderBanner from '../../components/StoreHeaderBanner';
-import SaveBar from '../../components/SaveBar';
 import { useCapacityData, useInvalidateCapacity } from './useCapacityData';
-import { cycleCellValue } from './cellCycle';
 import CapacityKpis from './CapacityKpis';
 import CapacityTable from './CapacityTable';
 import EmployeeModal from './EmployeeModal';
 import PowerQueryModal from './PowerQueryModal';
 
-const DEFAULT_MONTH = '2026-08';
+// Mes en curso según la fecha local (no UTC, que adelantaría el mes a fin de mes).
+function mesActual() {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+}
 
 function shiftMonth(month, offset) {
   const [year, m] = month.split('-').map(Number);
@@ -27,15 +29,14 @@ export default function CapacityPage() {
   const showToast = useToast();
   const isAdminLike = ROLES_ADMIN.includes(user.rol);
 
-  const [mes, setMes] = useState(DEFAULT_MONTH);
+  const [mes, setMes] = useState(mesActual);
   const { selectedStoreId, setSelectedStoreId } = useSelectedStore();
   const storeId = user.rol === 'TIENDA' ? user.id_tienda : selectedStoreId;
   const setStoreId = setSelectedStoreId;
-  const [pendingChanges, setPendingChanges] = useState({});
-  const [saving, setSaving] = useState(false);
   const [employeeModal, setEmployeeModal] = useState({ open: false, employee: null });
   const [savingEmployee, setSavingEmployee] = useState(false);
   const [powerQueryOpen, setPowerQueryOpen] = useState(false);
+  const [exportando, setExportando] = useState(false);
 
   const { data: tiendasAll } = useTiendas();
   // Capacity mide cumplimiento de plazas de vendedoras, que no aplica a
@@ -52,36 +53,14 @@ export default function CapacityPage() {
   const { data, isLoading } = useCapacityData(mes, storeId);
   const invalidateCapacity = useInvalidateCapacity();
 
-  useEffect(() => {
-    setPendingChanges({});
-  }, [mes, storeId]);
-
-  const handleCellClick = (idEmpleado, fecha, initialVal, regimen) => {
-    const key = `${idEmpleado}_${fecha}`;
-    const isPending = pendingChanges[key] !== undefined;
-    const rawVal = isPending ? pendingChanges[key].valor : initialVal;
-    const nextVal = cycleCellValue(rawVal, regimen);
-    setPendingChanges((prev) => ({ ...prev, [key]: { id_empleado: idEmpleado, fecha, valor: nextVal } }));
-  };
-
-  const discardChanges = () => {
-    setPendingChanges({});
-    showToast('Cambios descartados.', 'info');
-  };
-
-  const saveChanges = async () => {
-    const cambios = Object.values(pendingChanges);
-    if (cambios.length === 0) return;
-    setSaving(true);
+  const exportarExcel = async () => {
+    setExportando(true);
     try {
-      await bulkUpdateCapacity(cambios);
-      showToast('¡Cambios guardados con éxito!', 'success');
-      setPendingChanges({});
-      invalidateCapacity(mes, storeId);
+      await descargarCapacityCsv(mes, storeId);
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
-      setSaving(false);
+      setExportando(false);
     }
   };
 
@@ -143,6 +122,18 @@ export default function CapacityPage() {
           </button>
 
           <button
+            onClick={exportarExcel}
+            disabled={exportando}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all disabled:opacity-60"
+            title="Descargar el capacity del mes para abrirlo en Excel"
+          >
+            <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            <span>{exportando ? 'Generando...' : 'Exportar a Excel'}</span>
+          </button>
+
+          <button
             onClick={() => setPowerQueryOpen(true)}
             className="hidden md:flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl transition-all"
             title="Exportar a Power Query / Power BI"
@@ -155,18 +146,21 @@ export default function CapacityPage() {
         </div>
 
         <div className="flex items-center gap-2 text-xs font-medium text-gray-600 overflow-x-auto w-full md:w-auto py-1">
-          <span className="text-gray-400 font-bold uppercase text-[10px]">Valores Clic:</span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-full text-[11px]" title="1º clic en FT o 3º clic en PT">
-            <span>1.0</span> <span className="font-normal text-gray-500">T. Completo</span>
+          <span className="text-gray-400 font-bold uppercase text-[10px]">Se llena solo:</span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-full text-[11px]">
+            <span>1</span> <span className="font-normal text-gray-500">Día con venta</span>
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-half text-[11px]" title="1º clic en PT o 3º clic en FT">
-            <span>0.5</span> <span className="font-normal text-gray-500">Medio Turno</span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-zero text-[11px]">
+            <span>0</span> <span className="font-normal text-gray-500">No trabaja</span>
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-zero text-[11px]" title="2º clic para ambos">
-            <span>0.0</span> <span className="font-normal text-gray-500">Descanso/Falta</span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-null text-[11px]">
+            <span>-</span> <span className="font-normal text-gray-400">Sin horario oficial</span>
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg val-null text-[11px]" title="4º clic reinicia a vacío">
-            <span>-</span> <span className="font-normal text-gray-400">Vacío</span>
+          <span
+            className="text-[10px] text-gray-400 pl-1 whitespace-nowrap"
+            title="Se llena con el horario confirmado. Los turnos íntegramente fuera de 07:00-23:59 (madrugada, mantenimiento, remodelación) no cuentan como día con venta."
+          >
+            Horario confirmado, franja comercial 7:00–23:59
           </span>
         </div>
       </div>
@@ -178,13 +172,9 @@ export default function CapacityPage() {
       ) : (
         <CapacityTable
           data={data}
-          pendingChanges={pendingChanges}
-          onCellClick={handleCellClick}
           onEditEmployee={(emp) => setEmployeeModal({ open: true, employee: emp })}
         />
       )}
-
-      <SaveBar count={Object.keys(pendingChanges).length} saving={saving} onDiscard={discardChanges} onSave={saveChanges} />
 
       <EmployeeModal
         open={employeeModal.open}
