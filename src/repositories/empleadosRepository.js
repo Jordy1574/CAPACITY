@@ -43,9 +43,9 @@ async function findByDni(dni) {
   return rows[0] || null;
 }
 
-function findByIds(idArray) {
+function findByIds(idArray, queryFn = query) {
   const placeholders = idArray.map((_, i) => `$${i + 1}`).join(',');
-  return query(`SELECT id_empleado, id_tienda FROM empleados WHERE id_empleado IN (${placeholders})`, idArray);
+  return queryFn(`SELECT id_empleado, id_tienda, dia_descanso FROM empleados WHERE id_empleado IN (${placeholders})`, idArray);
 }
 
 function insert(data) {
@@ -96,8 +96,8 @@ function update(idEmpleado, data) {
   ]);
 }
 
-function updateDiaDescanso(idEmpleado, diaDescanso) {
-  return query('UPDATE empleados SET dia_descanso = $1 WHERE id_empleado = $2', [diaDescanso, idEmpleado]);
+function updateDiaDescanso(idEmpleado, diaDescanso, queryFn = query) {
+  return queryFn('UPDATE empleados SET dia_descanso = $1 WHERE id_empleado = $2', [diaDescanso, idEmpleado]);
 }
 
 module.exports = { getActiveEmpleados, findById, findByDni, findByIds, insert, update, updateDiaDescanso };

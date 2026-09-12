@@ -159,6 +159,35 @@ function validarBloquesTurno(turnos) {
   return bloques;
 }
 
+const DIA_DESCANSO_A_INDICE = { DOMINGO: 0, LUNES: 1, MARTES: 2, MIERCOLES: 3, JUEVES: 4, VIERNES: 5, SABADO: 6 };
+
+// Si se le asigna turno el día que tenía declarado como descanso, ese descanso
+// deja de tener sentido: no se puede descansar un día en el que se trabaja.
+// Se limpia de la ficha del colaborador para que no quede una contradicción
+// arrastrándose de semana en semana; luego se le asigna el que corresponda.
+// Aplica en cualquier via de escritura (edición en vivo o aprobación).
+async function limpiarDescansoEnConflicto(cambios, queryFn) {
+  const conTurno = (cambios || []).filter(c => (c.turnos || []).length > 0);
+  if (conTurno.length === 0) return;
+
+  const empIds = [...new Set(conTurno.map(c => c.id_empleado))];
+  const empleados = await empleadosRepository.findByIds(empIds, queryFn);
+  const porId = {};
+  empleados.forEach(e => { porId[e.id_empleado] = e; });
+
+  const limpiados = new Set();
+  for (const cambio of conTurno) {
+    const emp = porId[cambio.id_empleado];
+    if (!emp?.dia_descanso || limpiados.has(emp.id_empleado)) continue;
+
+    const diaSemana = new Date(`${String(cambio.fecha).substring(0, 10)}T00:00:00`).getDay();
+    if (diaSemana === DIA_DESCANSO_A_INDICE[emp.dia_descanso]) {
+      await empleadosRepository.updateDiaDescanso(emp.id_empleado, null, queryFn);
+      limpiados.add(emp.id_empleado);
+    }
+  }
+}
+
 async function verificarEmpleadosDeTienda(empIds, idTienda) {
   const checkedEmps = await empleadosRepository.findByIds(empIds);
   const invalidEmp = checkedEmps.find(e => e.id_tienda !== idTienda);
@@ -209,6 +238,8 @@ async function bulkUpdateHorario(user, body) {
       }
       updatedCount++;
     }
+
+    await limpiarDescansoEnConflicto(cambios, txQuery);
   });
 
   return { message: 'Horario actualizado correctamente.', registros_actualizados: updatedCount };
@@ -369,6 +400,7 @@ async function resolverSolicitudService(user, idSolicitud, aprobar, comentario, 
       }
     }
     await horariosRepository.marcarConfirmado(solicitud.id_tienda, solicitud.semana_inicio, user.id_usuario, txQuery);
+    await limpiarDescansoEnConflicto(cambios, txQuery);
 
     // El horario oficial es la fuente del capacity: al quedar confirmada la
     // semana, se marca 1 en los días con turno y 0 en los que no.
