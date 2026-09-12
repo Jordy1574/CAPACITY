@@ -3,7 +3,9 @@ export default function StoreSelector({ tiendas, value, onChange }) {
     <div className="relative">
       <select
         value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
+        // El <select> devuelve texto; los id de tienda se comparan como
+        // número en las pantallas, así que se convierte aquí.
+        onChange={(e) => onChange(Number(e.target.value))}
         title="Cambiar tienda"
         className="appearance-none text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-200 pl-3 pr-7 py-1.5 rounded-lg outline-none focus:ring-2 focus:ring-[#D81B60] cursor-pointer transition-colors"
       >
