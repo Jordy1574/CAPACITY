@@ -9,6 +9,7 @@ const CapacityPage = lazy(() => import('./features/capacity/CapacityPage'));
 const HorariosPage = lazy(() => import('./features/horarios/HorariosPage'));
 const UsuariosPage = lazy(() => import('./features/usuarios/UsuariosPage'));
 const AdministradoresPage = lazy(() => import('./features/usuarios/AdministradoresPage'));
+const AuditoriaPage = lazy(() => import('./features/usuarios/AuditoriaPage'));
 
 function PageFallback() {
   return <div className="p-6 text-sm text-gray-400">Cargando...</div>;
@@ -25,9 +26,12 @@ export default function App() {
             <Route path="/" element={<Navigate to="/capacity" replace />} />
             <Route path="/capacity" element={<CapacityPage />} />
             <Route path="/horarios" element={<HorariosPage />} />
-            <Route element={<RoleGuard allowedRoles={['ADMIN']} />}>
+            <Route element={<RoleGuard allowedRoles={['ADMIN', 'SUPERVISOR']} />}>
               <Route path="/usuarios" element={<UsuariosPage />} />
+            </Route>
+            <Route element={<RoleGuard allowedRoles={['ADMIN']} />}>
               <Route path="/administradores" element={<AdministradoresPage />} />
+              <Route path="/auditoria" element={<AuditoriaPage />} />
             </Route>
           </Route>
         </Route>

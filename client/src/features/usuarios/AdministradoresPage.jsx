@@ -1,5 +1,6 @@
 import UsuarioModal from './UsuarioModal';
-import ResetPasswordModal from './ResetPasswordModal';
+import CredencialesModal from './CredencialesModal';
+import HistorialModal from './HistorialModal';
 import UsuarioRow from './UsuarioRow';
 import { useUsuariosManagement } from './useUsuariosManagement';
 
@@ -11,12 +12,13 @@ export default function AdministradoresPage() {
     modal,
     setModal,
     saving,
-    resetModal,
-    setResetModal,
-    savingReset,
+    credencialesModal,
+    setCredencialesModal,
+    historialModal,
+    setHistorialModal,
     handleSubmit,
-    handleResetPassword,
-    handleToggleActivo
+    handleToggleActivo,
+    handleDelete
   } = useUsuariosManagement();
 
   // Cuentas de gestión: sin sede asignada (Admin/Supervisor), a diferencia
@@ -25,8 +27,11 @@ export default function AdministradoresPage() {
 
   const rowProps = {
     onEdit: (u) => setModal({ open: true, usuario: u }),
-    onResetPassword: (u) => setResetModal({ open: true, idUsuario: u.id_usuario }),
-    onToggleActivo: handleToggleActivo
+    onToggleActivo: handleToggleActivo,
+    onVerHistorial: (u) => setHistorialModal({ open: true, usuario: u }),
+    onDelete: handleDelete,
+    // Esta página ya es exclusiva de Admin (RoleGuard), así que quien la ve siempre puede eliminar.
+    puedeEliminar: true
   };
 
   return (
@@ -56,8 +61,25 @@ export default function AdministradoresPage() {
         {!isLoading && !error && administradores.map((u) => <UsuarioRow key={u.id_usuario} usuario={u} {...rowProps} />)}
       </div>
 
-      <UsuarioModal open={modal.open} usuario={modal.usuario} saving={saving} defaultRol="SUPERVISOR" onClose={() => setModal({ open: false, usuario: null })} onSubmit={handleSubmit} />
-      <ResetPasswordModal open={resetModal.open} saving={savingReset} onClose={() => setResetModal({ open: false, idUsuario: null })} onSubmit={handleResetPassword} />
+      <UsuarioModal
+        open={modal.open}
+        usuario={modal.usuario}
+        saving={saving}
+        defaultRol="SUPERVISOR"
+        rolesDisponibles={['SUPERVISOR', 'ADMIN']}
+        onClose={() => setModal({ open: false, usuario: null })}
+        onSubmit={handleSubmit}
+      />
+      <CredencialesModal
+        open={credencialesModal.open}
+        credenciales={credencialesModal.credenciales}
+        onClose={() => setCredencialesModal({ open: false, credenciales: null })}
+      />
+      <HistorialModal
+        open={historialModal.open}
+        usuario={historialModal.usuario}
+        onClose={() => setHistorialModal({ open: false, usuario: null })}
+      />
     </main>
   );
 }

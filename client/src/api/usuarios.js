@@ -19,3 +19,15 @@ export function resetPassword(idUsuario, password) {
 export function toggleActivo(idUsuario, activo) {
   return http.post(`/usuarios/${idUsuario}/toggle-activo`, { activo });
 }
+
+export function deleteUsuario(idUsuario) {
+  return http.del(`/usuarios/${idUsuario}`);
+}
+
+export function fetchHistorialUsuario(idUsuario) {
+  return http.get(`/usuarios/${idUsuario}/historial`);
+}
+
+export function fetchAuditoriaCompleta() {
+  return http.get('/auditoria');
+}
