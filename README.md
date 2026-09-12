@@ -32,17 +32,16 @@ Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad
 - Endpoint `/api/capacity/export` protegido por API Key.
 - Devuelve la matriz desdinamizada (*unpivoted*) lista para ser consumida directamente en Excel o Power BI sin transformaciones manuales de limpieza.
 
-### 6. 🔄 Dualidad de Base de Datos y Sincronización Automática
-- **Desarrollo sin Fricción**: Respaldo automático en **SQLite** local (`db/capacity.db`) si no se define `DATABASE_URL`.
-- **Sincronización a PostgreSQL**: Script automatizado (`db/sync_to_postgres.js`) para migrar y sincronizar datos locales a instancias PostgreSQL en producción de forma transparente.
+### 6. 🐘 Base de Datos Única: PostgreSQL
+- **Un solo motor**: el proyecto corre exclusivamente sobre **PostgreSQL**, en desarrollo y en producción.
+- **Sin arranque silencioso**: si falta `DATABASE_URL`, la aplicación falla de inmediato con un mensaje claro en lugar de levantar una base vacía por error.
 
 ---
 
 ## 🛠️ Requisitos Previos
 
 - **Node.js**: v18.0 o superior.
-- **Python**: 3.x (opcional, para ejecutar scripts de importación masiva desde Excel).
-- **PostgreSQL**: v14 o superior (opcional; si no está configurado, el sistema usará SQLite local).
+- **PostgreSQL**: v14 o superior (**obligatorio**). La aplicación no arranca sin una conexión configurada.
 
 ---
 
@@ -131,38 +130,86 @@ Con este flujo, abre [http://localhost:5173](http://localhost:5173) mientras des
 
 ---
 
-## 🗄️ Base de Datos y Sincronización
+## 🗄️ Base de Datos
+
+El sistema usa **PostgreSQL** como único motor. No hay respaldo local ni base
+embebida: si `DATABASE_URL` no está definida, el servidor no arranca.
 
 ### 1. Configuración de Variables de Entorno (`.env`)
 
-Crea un archivo `.env` basado en `.env.example`:
 ```env
 PORT=3000
 HOST=0.0.0.0
-JWT_SECRET=bissu_capacity_secret_key_2026_super_secure
-API_KEY_EXPORT=bissu_power_query_key_98765
+JWT_SECRET=cambia_esto_por_un_valor_propio
+API_KEY_EXPORT=clave_para_power_query
 
-# Descomenta para usar PostgreSQL en lugar de SQLite local:
-# DATABASE_URL=postgresql://postgres:tu_password@localhost:5432/bissu_capacity
+# Obligatoria. Sin esto la aplicación no levanta.
+DATABASE_URL=postgresql://postgres:tu_password@localhost:5432/bissu_capacity
 ```
 
-### 2. Migración y Sembrado Manual PostgreSQL
+> El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio**:
+> contiene la contraseña de la base y el secreto de firma de los tokens.
+
+### 2. Crear el esquema
+
 ```bash
+createdb bissu_capacity
 psql -U postgres -d bissu_capacity -f db/schema.sql
-psql -U postgres -d bissu_capacity -f db/seed.sql
+psql -U postgres -d bissu_capacity -f db/seed.sql   # datos de ejemplo, opcional
 ```
 
-### 3. Sincronizador SQLite ➔ PostgreSQL
-Para sincronizar automáticamente los datos de la base de datos local SQLite (`db/capacity.db`) con tu base de datos PostgreSQL:
+> ⚠️ `db/schema.sql` **empieza borrando todas las tablas** (`DROP TABLE ... CASCADE`).
+> Sirve para crear una base desde cero, nunca para actualizar una que ya tenga datos.
+
+### 3. Cambios de esquema sobre una base con datos
+
+El proyecto **no tiene sistema de migraciones**. Para modificar una base en uso se
+aplican sentencias `ALTER TABLE` a mano y luego se refleja el cambio en
+`db/schema.sql`, que es la referencia del estado actual. Ejemplo:
+
+```sql
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS horas_semana NUMERIC(5,2) NULL;
+```
+
+Conviene respaldar antes de tocar una base con información real:
+
 ```bash
-node db/sync_to_postgres.js
+pg_dump -U postgres bissu_capacity > respaldo_$(date +%F).sql
 ```
 
-### 4. Importación Masiva desde Excel
-Para actualizar los registros a partir de las plantillas oficiales Excel:
+### 4. Tablas
+
+| Tabla | Para qué sirve |
+|---|---|
+| `tiendas` | Sedes: tipo `TIENDA`, `OFICINA` o `LOGISTICA`. Las tiendas llevan código de almacén y rango de códigos de vendedor. |
+| `usuarios` | Cuentas de acceso. `email` para Admin/Supervisor, `username` para cuentas de sede. `id_empleado` marca las cuentas personales de Oficina/Logística; si es nulo, es la cuenta compartida de la sede. |
+| `usuarios_auditoria` | Historial de cambios sobre cuentas. Guarda copia del identificador para que el registro sobreviva a la eliminación de la cuenta. |
+| `empleados` | Colaboradores. `regimen` (FT/PT) define la dotación, `horas_semana` la jornada pactada y `situacion` incluye `NO_COMISIONA`. |
+| `empleado_novedades` | Vacaciones, descanso médico, faltas, permisos y licencias, por rango de fechas. |
+| `capacity_diario` | Un registro por colaborador y día: 1 si trabajó en franja comercial, 0 si no. Se llena solo desde el horario oficial. |
+| `horario_turnos` | Turnos del horario vigente. Varias filas por día permiten turnos partidos; un turno puede cruzar medianoche. |
+| `horario_semanas` | Marca qué semana de qué tienda ya está confirmada como oficial. |
+| `horario_solicitudes` | Solicitudes de cambio de horario, con estado y número de `version` para control de concurrencia. |
+| `horario_solicitud_dias` / `_turnos` | Detalle de lo propuesto en cada solicitud. |
+| `horarios_diario` | Tabla heredada, sin uso. |
+
+### 5. Cómo se relacionan Horarios y Capacity
+
+El capacity **no se llena a mano**. Cuando un Admin/Supervisor/RRHH aprueba el
+horario de una semana, en esa misma transacción se marca cada día con 1 o 0
+según haya turno en franja comercial (07:00–23:59). Los turnos íntegramente de
+madrugada —mantenimiento, remodelación, correctivos— suman horas en el horario
+pero no generan día de venta, así que no cuentan para el bono.
+
+### 6. Importación Masiva desde Excel
+
 ```bash
 python db/import_real_data.py
 ```
+
+> ⚠️ Este script todavía escribe a SQLite y **quedó obsoleto** tras el paso a
+> PostgreSQL. Se conserva porque contiene la lógica de lectura de las plantillas
+> de Excel; hay que adaptarlo antes de volver a usarlo.
 
 ---
 
@@ -170,16 +217,25 @@ python db/import_real_data.py
 
 Para sincronizar automáticamente Power BI o Excel con los datos de Capacity:
 
-1. En la aplicación web, accede como Administrador o usa el botón **Power Query BI** en la barra superior.
-2. Copia la URL de exportación:
+1. En la aplicación web, accede como Administrador y usa el botón **Power Query BI** de la barra superior: ahí se arma la URL con la clave real.
+2. La forma de la URL es:
    ```text
-   http://localhost:3000/api/capacity/export?mes=2026-08&api_key=bissu_power_query_key_98765
+   http://localhost:3000/api/capacity/export?mes=2026-08&api_key=<API_KEY_EXPORT>
    ```
+   Reemplaza `<API_KEY_EXPORT>` por el valor de tu `.env`. **No pegues la clave
+   en este README ni en ningún archivo del repositorio.**
 3. En **Power BI Desktop** o **Excel**:
    - Ir a `Obtener Datos` ➔ `Desde la Web`.
    - Pegar la URL y seleccionar `Aceptar`.
 4. El conjunto de datos incluye las columnas desdinamizadas:
-   - `fecha`, `dni`, `codigo_empleado`, `nombre_empleado`, `puesto`, `regimen`, `codigo_almacen`, `nombre_tienda`, `valor`.
+   - `fecha`, `dni`, `codigo_empleado`, `nombre_empleado`, `puesto`, `regimen`,
+     `dotacion`, `situacion`, `comisiona`, `codigo_almacen`, `nombre_tienda`,
+     `valor`, `semana_oficial`, `fecha_actualizacion`.
+
+> Preferible: enviar la clave en la cabecera `Authorization: Bearer <API_KEY_EXPORT>`
+> en lugar de la query string, que queda registrada en logs y proxies. Para
+> consumos nuevos existe además la API versionada `/api/v1/capacity/resumen`,
+> que entrega una fila por colaborador con los días trabajados ya calculados.
 
 ---
 
@@ -193,16 +249,14 @@ Para sincronizar automáticamente Power BI o Excel con los datos de Capacity:
 ├── .env.example
 ├── dist/                      # Build de producción del frontend (generado, servido por Fastify)
 ├── db/
-│   ├── schema.sql             # Definición de tablas PostgreSQL (Capacity, Horarios, Solicitudes)
+│   ├── schema.sql             # Esquema PostgreSQL de referencia. Crea desde cero: borra las tablas al inicio
 │   ├── seed.sql               # Datos iniciales (Tiendas, Usuarios, Empleados, Matriz)
-│   ├── capacity.db            # Base de datos SQLite de respaldo local
-│   ├── sync_to_postgres.js    # Sincronizador automatizado SQLite -> PostgreSQL
-│   └── import_real_data.py    # Script de importación desde plantillas Excel
+│   └── import_real_data.py    # Importación desde plantillas Excel (obsoleto: aún escribe a SQLite)
 ├── src/
 │   ├── app.js                 # Punto de entrada Fastify: plugins, error handler global, registro de rutas,
 │   │                           # servido de dist/ + fallback SPA para rutas del cliente
 │   ├── config/
-│   │   └── db.js              # Controlador dual de base de datos (PostgreSQL / SQLite)
+│   │   └── db.js              # Conexión a PostgreSQL: pool, query() y withTransaction()
 │   ├── errors/
 │   │   └── AppError.js        # Error tipado con statusCode, usado por los servicios
 │   ├── middleware/
