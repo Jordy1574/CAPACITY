@@ -16,8 +16,8 @@ export function AuthProvider({ children }) {
     setUnauthorizedHandler(() => logout());
   }, [logout]);
 
-  const login = useCallback(async (email, password) => {
-    const data = await loginRequest(email, password);
+  const login = useCallback(async (identificador, password) => {
+    const data = await loginRequest(identificador, password);
     storeSession(data.token, data.user);
     setUser(data.user);
     return data.user;

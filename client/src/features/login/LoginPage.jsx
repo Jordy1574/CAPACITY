@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 
-function fillDemo(setEmail, setPassword, email) {
-  setEmail(email);
+function fillDemo(setIdentificador, setPassword, identificador) {
+  setIdentificador(identificador);
   setPassword('123456');
 }
 
 export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [identificador, setIdentificador] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,7 +22,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(identificador.trim(), password);
       navigate('/capacity');
     } catch (err) {
       setError(err.message);
@@ -55,16 +55,18 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="email" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                Correo Corporativo
+              <label htmlFor="identificador" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                Usuario o Correo
               </label>
               <input
-                type="email"
-                id="email"
+                type="text"
+                id="identificador"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="ej. bissujesusmaria@bissu.pe"
+                value={identificador}
+                onChange={(e) => setIdentificador(e.target.value)}
+                placeholder="ej. larco o admin@bissu.pe"
+                autoCapitalize="none"
+                autoCorrect="off"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#D81B60] focus:border-transparent outline-none transition-all text-sm bg-white"
               />
             </div>
@@ -107,14 +109,14 @@ export default function LoginPage() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => fillDemo(setEmail, setPassword, 'bissujesusmaria@bissu.pe')}
+                onClick={() => fillDemo(setIdentificador, setPassword, 'bissujesusmaria@bissu.pe')}
                 className="px-3 py-2 text-xs bg-gray-50 hover:bg-pink-50 hover:text-[#D81B60] border border-gray-200 rounded-lg text-gray-600 transition-all font-medium text-center"
               >
                 Tienda Jesús María
               </button>
               <button
                 type="button"
-                onClick={() => fillDemo(setEmail, setPassword, 'admin@bissu.pe')}
+                onClick={() => fillDemo(setIdentificador, setPassword, 'admin@bissu.pe')}
                 className="px-3 py-2 text-xs bg-gray-50 hover:bg-pink-50 hover:text-[#D81B60] border border-gray-200 rounded-lg text-gray-600 transition-all font-medium text-center"
               >
                 Administrador Global

@@ -6,16 +6,16 @@ async function authRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['email', 'password'],
+        required: ['identificador', 'password'],
         properties: {
-          email: { type: 'string' },
+          identificador: { type: 'string' },
           password: { type: 'string' }
         }
       }
     }
   }, async (request, reply) => {
-    const { email, password } = request.body;
-    const tokenPayload = await authService.login(email, password);
+    const { identificador, password } = request.body;
+    const tokenPayload = await authService.login(identificador, password);
     const token = fastify.jwt.sign(tokenPayload, { expiresIn: '8h' });
 
     return reply.send({

@@ -20,10 +20,10 @@ export default function Header() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-white border border-gray-200 px-3 py-1.5 rounded-xl shadow-sm">
             <div className="w-7 h-7 rounded-full bg-[#D81B60] text-white flex items-center justify-center font-bold text-xs">
-              {(user?.email || 'U')[0].toUpperCase()}
+              {(user?.email || user?.username || 'U')[0].toUpperCase()}
             </div>
             <div className="text-left hidden lg:block">
-              <p className="text-xs font-bold text-gray-900 leading-tight">{user?.email}</p>
+              <p className="text-xs font-bold text-gray-900 leading-tight">{user?.email || user?.username}</p>
               <p className="text-[10px] text-gray-500 font-semibold uppercase">{user?.rol}</p>
             </div>
           </div>
