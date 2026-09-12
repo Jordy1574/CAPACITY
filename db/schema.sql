@@ -1,5 +1,7 @@
 -- Script de Migración PostgreSQL para bissú Capacity (Actualizado)
 
+DROP TABLE IF EXISTS empleado_novedades CASCADE;
+DROP TABLE IF EXISTS usuarios_auditoria CASCADE;
 DROP TABLE IF EXISTS horario_solicitud_turnos CASCADE;
 DROP TABLE IF EXISTS horario_solicitud_dias CASCADE;
 DROP TABLE IF EXISTS horario_solicitudes CASCADE;
@@ -25,12 +27,37 @@ CREATE TABLE tiendas (
 
 CREATE TABLE usuarios (
     id_usuario SERIAL PRIMARY KEY,
-    email VARCHAR(150) UNIQUE NOT NULL,
+    email VARCHAR(150) UNIQUE, -- NULL para cuentas TIENDA/OFICINA/LOGISTICA (usan username)
+    username VARCHAR(100) UNIQUE, -- NULL para cuentas ADMIN/SUPERVISOR (usan email)
     password_hash VARCHAR(255) NOT NULL,
     id_tienda INT NULL REFERENCES tiendas(id_tienda) ON DELETE SET NULL,
+    -- Cuenta personal de un empleado (Oficina/Logística): solo registra su
+    -- propio horario. NULL = cuenta compartida de la sede, que en una tienda
+    -- usa la encargada para llenar el horario de todo su equipo.
+    -- (La FK se agrega más abajo, una vez creada la tabla empleados.)
+    id_empleado INT NULL,
     rol VARCHAR(20) CHECK (rol IN ('TIENDA', 'SUPERVISOR', 'RRHH', 'ADMIN')) DEFAULT 'TIENDA',
     activo BOOLEAN NOT NULL DEFAULT TRUE
 );
+CREATE UNIQUE INDEX idx_usuarios_empleado_unico ON usuarios(id_empleado) WHERE id_empleado IS NOT NULL;
+
+-- Auditoría de cambios administrativos sobre cuentas (creación, edición de
+-- rol/correo, reseteo de contraseña, activar/desactivar, eliminación).
+-- id_usuario_afectado/actor son SET NULL al borrar la cuenta para no perder
+-- el historial; por eso se guarda también un snapshot en texto del
+-- identificador (email o username) de cada uno al momento de la acción.
+CREATE TABLE usuarios_auditoria (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_usuario_afectado INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    identificador_afectado VARCHAR(150) NOT NULL,
+    accion VARCHAR(30) NOT NULL CHECK (accion IN ('CREAR', 'EDITAR_ROL', 'EDITAR_CORREO', 'RESET_PASSWORD', 'ACTIVAR', 'DESACTIVAR', 'ELIMINAR')),
+    detalle TEXT NULL,
+    id_usuario_actor INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    actor_identificador VARCHAR(150) NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_usuarios_auditoria_afectado ON usuarios_auditoria(id_usuario_afectado);
+CREATE INDEX idx_usuarios_auditoria_fecha ON usuarios_auditoria(fecha DESC);
 
 CREATE TABLE empleados (
     id_empleado SERIAL PRIMARY KEY,
@@ -44,8 +71,29 @@ CREATE TABLE empleados (
     id_tienda INT NOT NULL REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
     situacion VARCHAR(20) DEFAULT 'ACTIVO', -- 'ACTIVO', 'INACTIVO'
     fecha_baja DATE NULL, -- Fecha de retiro para filtrado de alta rotación en meses futuros
-    dia_descanso VARCHAR(20) NULL -- Día fijo de descanso semanal (ej. 'MIERCOLES'), asignado manualmente
+    dia_descanso VARCHAR(20) NULL, -- Día fijo de descanso semanal (ej. 'MIERCOLES'), asignado manualmente
+    horas_semana NUMERIC(5,2) NULL -- Jornada pactada. NULL = estándar del régimen (FT 48, PT 23.5)
 );
+
+-- Ausencias y licencias. Un registro por rango cubre vacaciones, descanso
+-- médico, faltas, permisos y licencias: en el horario el día deja de verse
+-- como un hueco ambiguo y pasa a tener motivo.
+CREATE TABLE empleado_novedades (
+    id_novedad SERIAL PRIMARY KEY,
+    id_empleado INT NOT NULL REFERENCES empleados(id_empleado) ON DELETE CASCADE,
+    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('VACACIONES', 'DESCANSO_MEDICO', 'FALTA', 'PERMISO', 'LICENCIA')),
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    con_goce BOOLEAN NOT NULL DEFAULT TRUE,
+    observacion TEXT NULL,
+    registrado_por INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT rango_valido CHECK (fecha_fin >= fecha_inicio)
+);
+CREATE INDEX idx_novedades_empleado_fecha ON empleado_novedades(id_empleado, fecha_inicio, fecha_fin);
+
+ALTER TABLE usuarios
+    ADD CONSTRAINT fk_usuarios_empleado FOREIGN KEY (id_empleado) REFERENCES empleados(id_empleado) ON DELETE CASCADE;
 
 CREATE TABLE capacity_diario (
     id_registro SERIAL PRIMARY KEY,
