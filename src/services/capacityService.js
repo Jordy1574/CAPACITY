@@ -290,6 +290,18 @@ async function getResumenMensual(mesInput, idTiendaInput) {
   const diasDelMes = getDaysInMonth(mes);
   const cubiertas = await fechasOficialesDelMes(mes, idTienda);
 
+  // Detalle día por día, para no obligar a una segunda llamada. Un día sin
+  // registro queda en null y no en 0: null es "todavía no hay dato" (la
+  // semana no se ha aprobado) y 0 es "está confirmado que no trabajó".
+  const registros = filas.length
+    ? await capacityRepository.findRecordsForEmpleados(mes, filas.map(f => f.id_empleado))
+    : [];
+  const diasPorEmpleado = {};
+  registros.forEach(r => {
+    if (!diasPorEmpleado[r.id_empleado]) diasPorEmpleado[r.id_empleado] = {};
+    diasPorEmpleado[r.id_empleado][String(r.fecha).substring(0, 10)] = Number(r.valor) > 0 ? 1 : 0;
+  });
+
   const oficialesPorTienda = {};
   filas.forEach(f => {
     if (oficialesPorTienda[f.id_tienda] === undefined) {
@@ -320,7 +332,12 @@ async function getResumenMensual(mesInput, idTiendaInput) {
         // por un horario oficial, el dato todavía puede cambiar.
         dias_oficiales: diasOficiales,
         mes_completo: diasOficiales === diasDelMes.length,
-        ultima_actualizacion: f.ultima_actualizacion || null
+        ultima_actualizacion: f.ultima_actualizacion || null,
+        // 1 trabajó, 0 no trabajó, null sin dato. Incluye todos los días del
+        // mes, también los que no tienen registro.
+        dias: Object.fromEntries(
+          diasDelMes.map(d => [d, diasPorEmpleado[f.id_empleado]?.[d] ?? null])
+        )
       };
     })
   };

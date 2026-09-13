@@ -7,18 +7,17 @@ Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad
 ## 🚀 Características Principales
 
 ### 1. 📊 Módulo de Capacity & Asistencia
-- **Matriz Interactiva estilo Hoja de Cálculo**: Visualización por colaborador y días del mes.
-- **Edición Ultra Rápida**: Cambio dinámico de valores (`1.0`, `0.5`, `0.0`) con notificaciones en tiempo real (*Toast notifications*).
-- **Métricas y KPIs**: Resumen en tiempo real de colaboradores activos, porcentaje promedio de capacity, asistencias completas y días trabajados.
+- **Se llena solo desde el horario**: al aprobarse la semana, cada día queda en `1` o `0`. Las celdas son de solo lectura; ya no se cargan a mano.
+- **Solo cuenta la venta**: un turno que toca la franja comercial (07:00–23:59) marca `1`. Los de madrugada —mantenimiento, remodelación— suman horas en el horario pero no generan día de venta.
+- **Dotación por persona**: Full Time `1`, Part Time `0.5`. El estado `NO_COMISIONA` trabaja pero queda siempre en `0`.
+- **Métricas y KPIs**: colaboradores activos, promedio de capacity, turnos completos y registros del período.
 
 ### 2. 📅 Módulo de Gestión de Horarios
-- **Planificación Independiente de Horarios**: Espacio dedicado para la programación operativa mensual.
-- **Control de Ciclo de Vida (`BORRADOR` vs `ENVIADO`)**:
-  - Mientras el horario está en `BORRADOR`, la tienda puede editar libremente los turnos.
-  - Al hacer clic en **Enviar Horario**, el período pasa a estado `ENVIADO` y se bloquea para evitar ediciones accidentales o no autorizadas por la tienda.
-- **Flujo de Solicitudes y Permisos de Reapertura**:
-  - Si una tienda necesita ajustar un horario ya enviado (ej. emergencias de personal), puede enviar una **Solicitud de Permiso** indicando el motivo.
-  - Los roles administrativos (`ADMIN`, `SUPERVISOR`, `RRHH`) cuentan con una **Bandeja de Solicitudes** para revisar, aprobar o rechazar peticiones. Al aprobar, el período vuelve a `BORRADOR` permitiendo modificaciones a la sede.
+- **Planificación semanal por turnos**: varios bloques por día (turnos partidos, donde el hueco es el refrigerio y no suma horas) y turnos que cruzan la medianoche. La grilla se estira sola si la sede abre más temprano o cierra de madrugada.
+- **Ciclo de vida de la semana**: mientras no esté confirmada, la tienda edita en vivo. Una vez **oficial**, los cambios pasan por una solicitud que Admin/Supervisor/RRHH aprueba; el oficial no se mueve hasta entonces.
+- **La tienda puede corregir su solicitud** mientras siga pendiente, o descartarla y rehacerla desde el oficial. Un número de versión impide que se apruebe contenido viejo si la tienda lo modificó durante la revisión.
+- **Control para RRHH**: jornada pactada por colaborador (FT 48h, PT 23.5h, editables) con cálculo de horas extra, día de descanso reflejado en la grilla, y novedades por rango de fechas (vacaciones, descanso médico, faltas, permisos, licencias).
+- **Salidas**: el mes completo a Excel con una hoja por semana, y la semana como imagen para compartir o imprimir.
 
 ### 3. 👥 Gestión de Colaboradores y Alta Rotación
 - **Control de Personal**: Registro de colaboradores por DNI, código de asesor, nombre, puesto (Encargada, Asesor de ventas, Cajera), régimen (`FT` o `PT`), celular y correo corporativo.
@@ -28,9 +27,10 @@ Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad
 - Validación estricta en el backend: cada cuenta de rol `TIENDA` solo puede visualizar y modificar los datos de su propia sede.
 - Los roles de gestión (`ADMIN`, `SUPERVISOR`, `RRHH`) poseen acceso consolidado a todas las sedes mediante un selector interactivo de tiendas.
 
-### 5. 📈 Exportación Directa a Power Query / Power BI
-- Endpoint `/api/capacity/export` protegido por API Key.
-- Devuelve la matriz desdinamizada (*unpivoted*) lista para ser consumida directamente en Excel o Power BI sin transformaciones manuales de limpieza.
+### 5. 📈 API de consumo para Power BI y otros sistemas
+- `/api/v1/capacity/resumen` entrega una fila por colaborador con los días trabajados ya calculados **y el detalle día por día en 1 / 0**, listo para liquidar bonos sin rehacer la suma.
+- Distingue un `0` de "no trabajó" de un `null` de "esa semana aún no se aprueba", para no calcular sobre datos incompletos.
+- Protegido por API Key en la cabecera `Authorization`.
 
 ### 6. 🐘 Base de Datos Única: PostgreSQL
 - **Un solo motor**: el proyecto corre exclusivamente sobre **PostgreSQL**, en desarrollo y en producción.
@@ -102,31 +102,56 @@ Con este flujo, abre [http://localhost:5173](http://localhost:5173) mientras des
 ## 🌐 API & Endpoints
 
 ### 🔐 Autenticación (`/api/auth`)
-- `POST /api/auth/login`: Iniciar sesión (recibe `email` y `password`, retorna JWT).
-- `GET /api/auth/me`: Verificar sesión actual del usuario autenticado.
+- `POST /api/auth/login`: Recibe `identificador` y `password`, retorna JWT. El identificador puede ser el correo personal (Admin/Supervisor), el username autogenerado (cuentas de sede) o el correo oficial de la tienda.
+- `GET /api/auth/me`: Verificar sesión actual.
+
+### 📈 API de consumo (`/api/v1`) — para Power BI, Excel u otros sistemas
+Autenticación: `Authorization: Bearer <API_KEY_EXPORT>` (también se acepta `?api_key=` por compatibilidad).
+
+- `GET /api/v1/capacity/resumen?mes=YYYY-MM[&id_tienda=X]`
+  Una fila por colaborador con todo lo necesario para liquidar bonos:
+  `dni`, `nombre`, `puesto`, `regimen`, `dotacion` (FT 1 / PT 0.5), `situacion`,
+  `comisiona`, tienda, `dias_trabajados` ya sumados, y el detalle día por día en
+  `dias`: `{ "2026-09-01": 1, "2026-09-02": 0, "2026-09-07": null, ... }`
+  donde **1** = trabajó, **0** = no trabajó y **null** = todavía sin dato porque
+  esa semana no se ha aprobado. Incluye todos los días del mes.
+  Trae además `dias_oficiales` y `mes_completo` para saber si la cifra ya es
+  definitiva o aún puede cambiar.
+
+- `GET /api/v1/capacity/diario?mes=YYYY-MM[&id_tienda=X]`
+  Formato largo, una fila por colaborador y día, pensado para tablas dinámicas.
+  A diferencia de `resumen`, solo devuelve los días que tienen registro.
 
 ### 🏬 Tiendas y Capacity (`/api/capacity`)
-- `GET /api/tiendas`: Lista de todas las tiendas (selectores).
-- `GET /api/capacity?mes=YYYY-MM&id_tienda=X`: Obtener matriz de capacity por tienda y mes.
-- `PUT /api/capacity/bulk-update`: Actualizar registros de capacity en lote.
-- `GET /api/capacity/export?mes=YYYY-MM&api_key=KEY`: Endpoint público desdinamizado para Power Query / Power BI.
-- `POST /api/empleados`: Crear un nuevo colaborador.
-- `PUT /api/empleados/:id`: Actualizar datos o dar de baja a un colaborador.
+- `GET /api/tiendas`: Lista de sedes (selectores).
+- `POST /api/tiendas` · `PUT /api/tiendas/:id`: Crear y editar sedes (solo ADMIN).
+- `GET /api/capacity?mes=YYYY-MM&id_tienda=X`: Matriz de capacity del mes.
+- `GET /api/capacity/export.csv?mes=YYYY-MM&id_tienda=X`: Descarga la matriz para Excel.
+- `GET /api/capacity/export?mes=YYYY-MM`: Formato largo heredado para Power Query.
+- `POST /api/empleados` · `PUT /api/empleados/:id`: Crear y actualizar colaboradores.
 
-### 👤 Usuarios (`/api/usuarios`) — Solo ADMIN
-- `GET /api/usuarios`: Lista todos los usuarios (sin exponer la contraseña).
-- `POST /api/usuarios`: Crea un usuario (`email`, `password`, `rol`, `id_tienda` si el rol es `TIENDA`).
-- `PUT /api/usuarios/:id`: Cambia el rol y/o la tienda asignada.
-- `POST /api/usuarios/:id/reset-password`: Restablece la contraseña de un usuario.
-- `POST /api/usuarios/:id/toggle-activo`: Activa o desactiva una cuenta (bloquea el login sin eliminar el usuario ni su historial).
+> El capacity **no se escribe por API**: se deriva del horario oficial al aprobarse la semana.
+
+### 👤 Usuarios (`/api/usuarios`) — ADMIN y SUPERVISOR
+El Supervisor solo puede gestionar cuentas de Tienda/Oficina/Logística; eliminar es exclusivo de ADMIN.
+
+- `GET /api/usuarios`: Lista de cuentas (nunca expone la contraseña).
+- `POST /api/usuarios`: Crea una cuenta. La contraseña **se autogenera** y se devuelve una única vez. Según el caso recibe `email` (Admin/Supervisor), `tienda: {...}` (crea la tienda con su cuenta) o `empleado: {...}` (cuenta personal de Oficina/Logística).
+- `PUT /api/usuarios/:id`: Cambia rol, sede o correo.
+- `POST /api/usuarios/:id/reset-password` · `POST /api/usuarios/:id/toggle-activo`
+- `DELETE /api/usuarios/:id`: Eliminación definitiva (solo ADMIN).
+- `GET /api/usuarios/:id/historial` · `GET /api/auditoria`: Historial de cambios sobre cuentas.
 
 ### 📅 Horarios (`/api/horarios`)
-- `GET /api/horarios?mes=YYYY-MM&id_tienda=X`: Obtener matriz de horarios y estado del período (`BORRADOR` / `ENVIADO`).
-- `PUT /api/horarios/bulk-update`: Actualizar turnos de horarios (bloqueado si el período está `ENVIADO` para rol `TIENDA`).
-- `POST /api/horarios/enviar`: Bloquear el horario del mes pasando el estado a `ENVIADO`.
-- `POST /api/horarios/solicitar-permiso`: Enviar solicitud con motivo para reabrir edición de un horario enviado.
-- `GET /api/horarios/solicitudes?estado=PENDIENTE`: Listar solicitudes de permisos.
-- `POST /api/horarios/solicitudes/:id/resolver`: Aprobar (reabre a `BORRADOR`) o rechazar la solicitud (solo ADMIN/SUPERVISOR/RRHH).
+- `GET /api/horarios/semana?semana_inicio=YYYY-MM-DD&id_tienda=X`: Semana con turnos, novedades y estado.
+- `PUT /api/horarios/bulk-update`: Edición en vivo (bloqueada para TIENDA si la semana ya es oficial).
+- `POST /api/horarios/solicitudes`: Crea o reemplaza la solicitud pendiente de esa semana.
+- `PUT /api/horarios/solicitudes/:id`: La tienda corrige su solicitud mientras siga pendiente.
+- `GET /api/horarios/solicitudes?estado=PENDIENTE`: Bandeja de solicitudes.
+- `POST /api/horarios/solicitudes/:id/resolver`: Aprobar o rechazar (ADMIN/SUPERVISOR/RRHH). Se envía la `version` que se tenía cargada; si la tienda la corrigió mientras tanto, se rechaza la aprobación.
+- `GET /api/horarios/export.xlsx?mes=YYYY-MM&id_tienda=X`: Mes completo, una hoja por semana (ADMIN/SUPERVISOR/RRHH).
+- `GET /api/horarios/empleados/:id/novedades` · `POST /api/horarios/novedades` · `DELETE /api/horarios/novedades/:id`: Vacaciones, descanso médico, faltas, permisos y licencias.
+- `PUT /api/horarios/empleados/:id/dia-descanso`: Día fijo de descanso.
 
 ---
 
