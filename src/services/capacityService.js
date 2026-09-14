@@ -360,6 +360,10 @@ async function exportCapacity(mesInput, idTiendaInput) {
 
   return rows.map(r => {
     const fecha = String(r.fecha).substring(0, 10);
+    const sinDato = r.valor === null || r.valor === undefined;
+    // Los meses viejos guardan medios turnos (0.5) con la semántica anterior;
+    // cualquier valor mayor que cero significa que ese día trabajó.
+    const valor = sinDato ? null : (parseFloat(r.valor) > 0 ? 1 : 0);
     return {
       fecha,
       dni: r.dni,
@@ -374,7 +378,10 @@ async function exportCapacity(mesInput, idTiendaInput) {
       dotacion: dotacionDe(r.regimen),
       situacion: r.situacion,
       comisiona: r.situacion !== 'NO_COMISIONA',
-      valor: parseFloat(r.valor),
+      // 1 trabajó, 0 no trabajó, null todavía no hay horario cargado para ese
+      // día. El estado dice lo mismo en texto, para quien no quiera nulos.
+      valor,
+      estado_dia: sinDato ? 'SIN_HORARIO' : valor === 1 ? 'TRABAJO' : 'NO_TRABAJO',
       // Distingue un 0 de "no trabajó" de un 0 de "esa semana aún no se aprueba".
       semana_oficial: cubiertas.has(`${r.id_tienda}_${fecha}`),
       fecha_actualizacion: r.fecha_actualizacion || null

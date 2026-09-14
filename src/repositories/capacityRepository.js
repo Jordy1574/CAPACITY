@@ -20,10 +20,25 @@ function upsertRecord(idEmpleado, fecha, valor, idUsuario, queryFn = query) {
   return queryFn(sql, [idEmpleado, fecha, valor, idUsuario]);
 }
 
+// Grilla completa del mes: una fila por colaborador y por día, haya o no
+// registro de capacity. Antes se partía de capacity_diario, así que los días
+// sin dato simplemente no venían y quien consumía la API veía huecos en vez
+// de un 0 o un "todavía sin horario".
 function findExportRows(mes, idTienda) {
-  let sql = `
+  const params = [`${mes}-01`];
+  let filtroTienda = '';
+
+  if (idTienda) {
+    filtroTienda = ' AND e.id_tienda = $2';
+    params.push(idTienda);
+  }
+
+  const sql = `
+    WITH dias AS (
+      SELECT generate_series($1::date, ($1::date + INTERVAL '1 month - 1 day')::date, INTERVAL '1 day')::date AS fecha
+    )
     SELECT
-      CAST(c.fecha AS TEXT) AS fecha,
+      CAST(d.fecha AS TEXT) AS fecha,
       e.dni,
       e.codigo_empleado,
       e.nombre_completo AS nombre_empleado,
@@ -37,19 +52,15 @@ function findExportRows(mes, idTienda) {
       t.nombre_tienda,
       c.valor,
       c.fecha_actualizacion
-    FROM capacity_diario c
-    INNER JOIN empleados e ON c.id_empleado = e.id_empleado
+    FROM empleados e
     INNER JOIN tiendas t ON e.id_tienda = t.id_tienda
-    WHERE CAST(c.fecha AS TEXT) LIKE $1
+    CROSS JOIN dias d
+    LEFT JOIN capacity_diario c ON c.id_empleado = e.id_empleado AND c.fecha = d.fecha
+    WHERE (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= d.fecha)
+      AND (e.situacion <> 'INACTIVO' OR e.fecha_baja IS NULL OR e.fecha_baja >= d.fecha)
+      ${filtroTienda}
+    ORDER BY t.nombre_tienda ASC, e.nombre_completo ASC, d.fecha ASC
   `;
-  const params = [`${mes}%`];
-
-  if (idTienda) {
-    sql += ` AND e.id_tienda = $2`;
-    params.push(idTienda);
-  }
-
-  sql += ` ORDER BY t.nombre_tienda ASC, e.nombre_completo ASC, c.fecha ASC`;
 
   return query(sql, params);
 }

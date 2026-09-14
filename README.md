@@ -119,8 +119,16 @@ Autenticación: `Authorization: Bearer <API_KEY_EXPORT>` (también se acepta `?a
   definitiva o aún puede cambiar.
 
 - `GET /api/v1/capacity/diario?mes=YYYY-MM[&id_tienda=X]`
-  Formato largo, una fila por colaborador y día, pensado para tablas dinámicas.
-  A diferencia de `resumen`, solo devuelve los días que tienen registro.
+  Formato largo, pensado para tablas dinámicas: **una fila por colaborador y por
+  cada día del mes**, tenga o no registro. Campos por fila:
+  - `valor`: **1** trabajó · **0** no trabajó · **null** todavía sin horario cargado.
+  - `estado_dia`: lo mismo en texto (`TRABAJO`, `NO_TRABAJO`, `SIN_HORARIO`),
+    para consumidores que prefieren no lidiar con nulos.
+  - `semana_oficial`: si la semana de esa fecha ya está aprobada. Un 0 con
+    `semana_oficial: false` todavía puede cambiar.
+
+  No se emiten días fuera del periodo del colaborador: anteriores a su
+  `fecha_ingreso` o posteriores a su `fecha_baja`.
 
 ### 🏬 Tiendas y Capacity (`/api/capacity`)
 - `GET /api/tiendas`: Lista de sedes (selectores).
@@ -128,6 +136,7 @@ Autenticación: `Authorization: Bearer <API_KEY_EXPORT>` (también se acepta `?a
 - `GET /api/capacity?mes=YYYY-MM&id_tienda=X`: Matriz de capacity del mes.
 - `GET /api/capacity/export.csv?mes=YYYY-MM&id_tienda=X`: Descarga la matriz para Excel.
 - `GET /api/capacity/export?mes=YYYY-MM`: Formato largo heredado para Power Query.
+  Devuelve lo mismo que `/api/v1/capacity/diario`, pero como arreglo plano.
 - `POST /api/empleados` · `PUT /api/empleados/:id`: Crear y actualizar colaboradores.
 
 > El capacity **no se escribe por API**: se deriva del horario oficial al aprobarse la semana.
