@@ -147,7 +147,9 @@ function update(idEmpleado, data, queryFn = query) {
         codigo_empleado = $7,
         situacion = COALESCE($8, situacion),
         fecha_baja = $9,
-        horas_semana = $10,
+        -- COALESCE: el formulario de tienda ya no envía la jornada pactada, y
+        -- omitirla no debe borrar la que tenga cargada desde gestión.
+        horas_semana = COALESCE($10, horas_semana),
         fecha_ingreso = $11
     WHERE id_empleado = $12
   `;

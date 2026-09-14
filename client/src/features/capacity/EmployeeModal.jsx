@@ -8,7 +8,6 @@ const EMPTY_FORM = {
   nombre_completo: '',
   puesto: 'ASESOR DE VENTAS',
   regimen: 'FT',
-  horas_semana: '',
   codigo_empleado: '',
   correo_asesor: '',
   situacion: 'ACTIVO',
@@ -33,7 +32,6 @@ export default function EmployeeModal({ open, employee, tienda, empleados, savin
         nombre_completo: employee.nombre_completo || '',
         puesto: employee.puesto || 'ASESOR DE VENTAS',
         regimen: employee.regimen || 'FT',
-        horas_semana: employee.horas_semana ?? '',
         codigo_empleado: employee.codigo_empleado || '',
         correo_asesor: employee.correo_asesor || '',
         situacion: employee.situacion || 'ACTIVO',
@@ -69,7 +67,6 @@ export default function EmployeeModal({ open, employee, tienda, empleados, savin
     nombre_completo: form.nombre_completo.trim().toUpperCase(),
     puesto: form.puesto,
     regimen: form.regimen,
-    horas_semana: form.horas_semana === '' ? null : Number(form.horas_semana),
     codigo_empleado: form.codigo_empleado,
     correo_asesor: form.correo_asesor.trim(),
     situacion: form.situacion,
@@ -267,25 +264,6 @@ export default function EmployeeModal({ open, employee, tienda, empleados, savin
                 <option value="PT">Part Time (PT)</option>
               </select>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
-              Jornada Semanal Pactada (horas)
-            </label>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              max="48"
-              value={form.horas_semana}
-              onChange={set('horas_semana')}
-              placeholder={form.regimen === 'PT' ? 'Estándar PT: 23.5' : 'Estándar FT: 48'}
-              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]"
-            />
-            <p className="text-[10px] text-gray-400 mt-1">
-              Déjalo vacío para usar la jornada estándar del régimen. Se compara contra el horario para calcular horas extra.
-            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

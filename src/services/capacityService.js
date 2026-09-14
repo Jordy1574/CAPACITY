@@ -377,6 +377,10 @@ async function exportCapacity(mesInput, idTiendaInput) {
       nombre_tienda: r.nombre_tienda,
       dotacion: dotacionDe(r.regimen),
       situacion: r.situacion,
+      // Periodo del colaborador en la sede. Null = ya venía trabajando (no se
+      // cargó fecha) o sigue activo.
+      fecha_ingreso: r.fecha_ingreso || null,
+      fecha_baja: r.fecha_baja || null,
       comisiona: r.situacion !== 'NO_COMISIONA',
       // 1 trabajó, 0 no trabajó, null todavía no hay horario cargado para ese
       // día. El estado dice lo mismo en texto, para quien no quiera nulos.
@@ -449,6 +453,10 @@ async function getResumenMensual(mesInput, idTiendaInput) {
         regimen: f.regimen,
         dotacion: dotacionDe(f.regimen),
         situacion: f.situacion,
+        // Periodo del colaborador en la sede. Null = ya venía trabajando (no
+        // se cargó fecha) o sigue activo.
+        fecha_ingreso: f.fecha_ingreso || null,
+        fecha_baja: f.fecha_baja || null,
         comisiona: f.situacion !== 'NO_COMISIONA',
         id_tienda: f.id_tienda,
         codigo_almacen: f.codigo_almacen,

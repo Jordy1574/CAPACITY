@@ -16,7 +16,7 @@ Aplicación web ultra ligera, rápida y optimizada para la gestión de capacidad
 - **Planificación semanal por turnos**: varios bloques por día (turnos partidos, donde el hueco es el refrigerio y no suma horas) y turnos que cruzan la medianoche. La grilla se estira sola si la sede abre más temprano o cierra de madrugada.
 - **Ciclo de vida de la semana**: mientras no esté confirmada, la tienda edita en vivo. Una vez **oficial**, los cambios pasan por una solicitud que Admin/Supervisor/RRHH aprueba; el oficial no se mueve hasta entonces.
 - **La tienda puede corregir su solicitud** mientras siga pendiente, o descartarla y rehacerla desde el oficial. Un número de versión impide que se apruebe contenido viejo si la tienda lo modificó durante la revisión.
-- **Control para RRHH**: jornada pactada por colaborador (FT 48h, PT 23.5h, editables) con cálculo de horas extra, día de descanso reflejado en la grilla, y novedades por rango de fechas (vacaciones, descanso médico, faltas, permisos, licencias).
+- **Control para RRHH**: jornada estándar por régimen (FT 48h, PT 23.5h) con cálculo de horas extra, día de descanso reflejado en la grilla, y novedades por rango de fechas (vacaciones, descanso médico, faltas, permisos, licencias).
 - **Salidas**: el mes completo a Excel con una hoja por semana, y la semana como imagen para compartir o imprimir.
 
 ### 3. 👥 Gestión de Colaboradores y Alta Rotación
@@ -111,7 +111,8 @@ Autenticación: `Authorization: Bearer <API_KEY_EXPORT>` (también se acepta `?a
 - `GET /api/v1/capacity/resumen?mes=YYYY-MM[&id_tienda=X]`
   Una fila por colaborador con todo lo necesario para liquidar bonos:
   `dni`, `nombre`, `puesto`, `regimen`, `dotacion` (FT 1 / PT 0.5), `situacion`,
-  `comisiona`, tienda, `dias_trabajados` ya sumados, y el detalle día por día en
+  `fecha_ingreso`, `fecha_baja`, `comisiona`, tienda, `dias_trabajados` ya
+  sumados, y el detalle día por día en
   `dias`: `{ "2026-09-01": 1, "2026-09-02": 0, "2026-09-07": null, ... }`
   donde **1** = trabajó, **0** = no trabajó y **null** = todavía sin dato porque
   esa semana no se ha aprobado. Incluye todos los días del mes.
@@ -126,6 +127,8 @@ Autenticación: `Authorization: Bearer <API_KEY_EXPORT>` (también se acepta `?a
     para consumidores que prefieren no lidiar con nulos.
   - `semana_oficial`: si la semana de esa fecha ya está aprobada. Un 0 con
     `semana_oficial: false` todavía puede cambiar.
+  - `fecha_ingreso` y `fecha_baja`: periodo del colaborador en esa sede
+    (`null` = ya venía trabajando / sigue activo).
 
   No se emiten días fuera del periodo del colaborador: anteriores a su
   `fecha_ingreso` o posteriores a su `fecha_baja`.
@@ -234,7 +237,7 @@ pg_dump -U postgres bissu_capacity > respaldo_$(date +%F).sql
 | `tiendas` | Sedes: tipo `TIENDA`, `OFICINA` o `LOGISTICA`. Las tiendas llevan código de almacén y rango de códigos de vendedor. |
 | `usuarios` | Cuentas de acceso. `email` para Admin/Supervisor, `username` para cuentas de sede. `id_empleado` marca las cuentas personales de Oficina/Logística; si es nulo, es la cuenta compartida de la sede. |
 | `usuarios_auditoria` | Historial de cambios sobre cuentas. Guarda copia del identificador para que el registro sobreviva a la eliminación de la cuenta. |
-| `empleados` | Una fila por colaborador **y sede**. `regimen` (FT/PT) define la dotación, `horas_semana` la jornada pactada, `situacion` incluye `NO_COMISIONA` y `fecha_ingreso` lo oculta de los periodos anteriores a su alta. El DNI es único por tienda: la misma persona puede tener ficha en varias sedes cuando va de apoyo, con un código de vendedor distinto en cada una. |
+| `empleados` | Una fila por colaborador **y sede**. `regimen` (FT/PT) define la dotación y la jornada estándar (FT 48h, PT 23.5h); `horas_semana` solo se usa para una jornada pactada distinta y no se edita desde la app, `situacion` incluye `NO_COMISIONA` y `fecha_ingreso` lo oculta de los periodos anteriores a su alta. El DNI es único por tienda: la misma persona puede tener ficha en varias sedes cuando va de apoyo, con un código de vendedor distinto en cada una. |
 | `empleado_novedades` | Vacaciones, descanso médico, faltas, permisos y licencias, por rango de fechas. |
 | `capacity_diario` | Un registro por colaborador y día: 1 si trabajó en franja comercial, 0 si no. Se llena solo desde el horario oficial. |
 | `horario_turnos` | Turnos del horario vigente. Varias filas por día permiten turnos partidos; un turno puede cruzar medianoche. |

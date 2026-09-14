@@ -47,6 +47,8 @@ function findExportRows(mes, idTienda) {
       e.celular,
       e.correo_asesor,
       e.situacion,
+      CAST(e.fecha_ingreso AS TEXT) AS fecha_ingreso,
+      CAST(e.fecha_baja AS TEXT) AS fecha_baja,
       e.id_tienda,
       t.codigo_almacen,
       t.nombre_tienda,
@@ -78,6 +80,8 @@ function findResumenMensual(mes, idTienda) {
       e.puesto,
       e.regimen,
       e.situacion,
+      CAST(e.fecha_ingreso AS TEXT) AS fecha_ingreso,
+      CAST(e.fecha_baja AS TEXT) AS fecha_baja,
       t.id_tienda,
       t.codigo_almacen,
       t.nombre_tienda,
@@ -92,6 +96,8 @@ function findResumenMensual(mes, idTienda) {
       e.situacion IN ('ACTIVO', 'NO_COMISIONA')
       OR (e.situacion = 'INACTIVO' AND (e.fecha_baja IS NULL OR CAST(e.fecha_baja AS TEXT) >= $2))
     )
+    -- Quien ingreso despues del mes consultado no aparece en el.
+    AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= ($2::date + INTERVAL '1 month - 1 day')::date)
   `;
 
   if (idTienda) {
@@ -101,7 +107,8 @@ function findResumenMensual(mes, idTienda) {
 
   sql += `
     GROUP BY e.id_empleado, e.dni, e.codigo_empleado, e.nombre_completo, e.puesto,
-             e.regimen, e.situacion, t.id_tienda, t.codigo_almacen, t.nombre_tienda
+             e.regimen, e.situacion, e.fecha_ingreso, e.fecha_baja,
+             t.id_tienda, t.codigo_almacen, t.nombre_tienda
     ORDER BY t.nombre_tienda ASC, e.nombre_completo ASC
   `;
 
