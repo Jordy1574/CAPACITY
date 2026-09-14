@@ -222,6 +222,11 @@ ALTER TABLE empleados ADD CONSTRAINT empleados_dni_tienda_key UNIQUE (dni, id_ti
 -- Un código de vendedor no se repite dentro de la misma tienda
 CREATE UNIQUE INDEX IF NOT EXISTS idx_empleado_codigo_por_tienda
   ON empleados(id_tienda, codigo_empleado) WHERE codigo_empleado IS NOT NULL;
+
+-- Normalización de los nombres cargados antes de la regla de mayúsculas
+UPDATE empleados
+SET nombre_completo = UPPER(TRIM(REGEXP_REPLACE(nombre_completo, '\s+', ' ', 'g')))
+WHERE nombre_completo <> UPPER(TRIM(REGEXP_REPLACE(nombre_completo, '\s+', ' ', 'g')));
 ```
 
 Conviene respaldar antes de tocar una base con información real:
