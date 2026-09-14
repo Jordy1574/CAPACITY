@@ -23,6 +23,11 @@ const EMPTY_FORM = {
 
 const ROL_LABELS = { TIENDA: 'TIENDA', SUPERVISOR: 'SUPERVISOR', ADMIN: 'ADMIN' };
 
+// El área es el tipo de sede. Una cuenta personal puede pasar de Oficina a
+// Logística y al revés; la de una tienda no, porque pertenece a esa tienda.
+const AREA_LABELS = { TIENDA: 'Tiendas', OFICINA: 'Oficina', LOGISTICA: 'Logística' };
+const AREAS_PERSONALES = ['OFICINA', 'LOGISTICA'];
+
 const inputClass = 'w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]';
 const labelClass = 'block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1';
 
@@ -49,14 +54,18 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
   const [form, setForm] = useState(EMPTY_FORM);
   // Mientras el usuario no toque el "hasta", se sigue autocompletando.
   const [hastaEditado, setHastaEditado] = useState(false);
+  // Área de la cuenta: arranca en la pestaña activa, pero se puede cambiar.
+  // Antes quedaba fija y la única salida era borrar la cuenta y rehacerla.
+  const [area, setArea] = useState(sedeTipo || 'TIENDA');
   const { data: tiendas } = useTiendas();
   const mostrarSelectorRol = rolesDisponibles.length > 1;
-  const sedesDisponibles = (tiendas || []).filter((t) => !sedeTipo || t.tipo === sedeTipo);
+  const sedesDisponibles = (tiendas || []).filter((t) => !area || t.tipo === area);
   const tiendaDelUsuario = usuario ? (tiendas || []).find((t) => t.id_tienda === usuario.id_tienda) : null;
 
   useEffect(() => {
     if (!open) return;
     setHastaEditado(Boolean(usuario));
+    setArea((usuario && usuario.tipo_sede) || sedeTipo);
     if (usuario) {
       const rango = parseRango(tiendaDelUsuario?.rango_codigos);
       setForm({
@@ -84,11 +93,23 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
   //  - Gestión (Admin/Supervisor): se identifica por correo.
   //  - Tienda: una sola cuenta por tienda, creada junto con la tienda misma.
   //  - Oficina/Logística: una cuenta por empleado, para su horario personal.
-  const esCuentaDeTienda = form.rol === 'TIENDA' && sedeTipo === 'TIENDA';
-  const esCuentaPersonal = form.rol === 'TIENDA' && (sedeTipo === 'OFICINA' || sedeTipo === 'LOGISTICA');
+  const esCuentaDeTienda = form.rol === 'TIENDA' && area === 'TIENDA';
+  const esCuentaPersonal = form.rol === 'TIENDA' && AREAS_PERSONALES.includes(area);
+  // Solo una cuenta personal se puede mover de área; la de una tienda es de
+  // esa tienda, y una cuenta de gestión (Admin/Supervisor) no tiene sede.
+  const puedeCambiarArea = form.rol === 'TIENDA' && (!isEdit || Boolean(usuario.id_empleado));
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
   // Los nombres se guardan en mayúsculas; se muestran así mientras se escriben.
   const setMayus = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value.toUpperCase() }));
+
+  // Al cambiar de área hay que reapuntar la sede: las de la anterior ya no
+  // aplican.
+  const cambiarArea = (e) => {
+    const nueva = e.target.value;
+    setArea(nueva);
+    const primera = (tiendas || []).find((t) => t.tipo === nueva);
+    setForm((f) => ({ ...f, id_tienda: primera?.id_tienda || '' }));
+  };
 
   const desdeNum = parseInt(form.rango_desde, 10);
   const hastaNum = parseInt(form.rango_hasta, 10);
@@ -210,6 +231,32 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* En qué área se está creando/editando. Antes se deducía de la
+              pestaña abierta y no se veía por ningún lado. */}
+          {form.rol === 'TIENDA' && (
+            <div className="p-3 bg-pink-50/60 border border-pink-100 rounded-xl">
+              <label className={labelClass}>Área</label>
+              {puedeCambiarArea ? (
+                <select value={area} onChange={cambiarArea} className={inputClass}>
+                  {Object.keys(AREA_LABELS).map((clave) => (
+                    <option key={clave} value={clave} disabled={isEdit && clave === 'TIENDA'}>
+                      {AREA_LABELS[clave]}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs font-bold text-gray-900">{AREA_LABELS[area]}</p>
+              )}
+              <p className="text-[10px] text-gray-500 mt-1">
+                {isEdit
+                  ? puedeCambiarArea
+                    ? 'Cambiar el área mueve al colaborador y su cuenta a la sede que elijas.'
+                    : 'La cuenta de una tienda pertenece a esa tienda y no se puede mover de área.'
+                  : `La cuenta se creará en ${AREA_LABELS[area]}.`}
+              </p>
+            </div>
+          )}
+
           {/* Cuenta de gestión: se identifica por correo, editable después. */}
           {requiereCorreo && (
             <div>
@@ -317,11 +364,13 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
             </div>
           )}
 
-          {/* Solo hace falta elegir sede si hay más de una de ese tipo. */}
-          {esCuentaPersonal && sedesDisponibles.length > 1 && (
+          {/* La sede siempre se muestra: con una sola por área quedaba oculta
+              y no había forma de ver ni cambiar dónde iba a parar la cuenta. */}
+          {esCuentaPersonal && (
             <div>
               <label className={labelClass}>Sede</label>
-              <select value={form.id_tienda} onChange={set('id_tienda')} className={inputClass}>
+              <select value={form.id_tienda} onChange={set('id_tienda')} className={inputClass} disabled={sedesDisponibles.length <= 1}>
+                {sedesDisponibles.length === 0 && <option value="">(No hay sedes en {AREA_LABELS[area]})</option>}
                 {sedesDisponibles.map((t) => (
                   <option key={t.id_tienda} value={t.id_tienda}>{t.nombre_tienda}</option>
                 ))}

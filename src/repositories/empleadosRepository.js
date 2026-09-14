@@ -44,6 +44,31 @@ async function findById(idEmpleado) {
   return rows[0] || null;
 }
 
+// Mueve la ficha completa a otra sede. Se usa al cambiar de área a una cuenta
+// personal (Oficina <-> Logística): la persona y su historial son los mismos,
+// solo cambia dónde trabaja.
+function moverDeTienda(idEmpleado, idTienda, queryFn = query) {
+  return queryFn('UPDATE empleados SET id_tienda = $1 WHERE id_empleado = $2', [idTienda, idEmpleado]);
+}
+
+// ¿La ficha tiene algo que perder? Se consulta antes de borrarla junto con su
+// cuenta: sin horarios ni capacity es un registro de prueba, con ellos es
+// historial que hay que conservar.
+async function tieneHistorial(idEmpleado) {
+  const rows = await query(
+    `SELECT
+       (SELECT COUNT(*) FROM capacity_diario WHERE id_empleado = $1)
+     + (SELECT COUNT(*) FROM horario_turnos WHERE id_empleado = $1)
+     + (SELECT COUNT(*) FROM empleado_novedades WHERE id_empleado = $1) AS total`,
+    [idEmpleado]
+  );
+  return Number(rows[0]?.total || 0) > 0;
+}
+
+function deleteById(idEmpleado, queryFn = query) {
+  return queryFn('DELETE FROM empleados WHERE id_empleado = $1', [idEmpleado]);
+}
+
 // Todas las fichas de una persona: puede estar en varias sedes por apoyo.
 function findAllByDni(dni) {
   return query(
@@ -148,5 +173,6 @@ function updateDiaDescanso(idEmpleado, diaDescanso, queryFn = query) {
 
 module.exports = {
   getActiveEmpleados, findById, findAllByDni, findByCodigoEnTienda,
-  findByIds, insert, update, updateDatosPersonales, darDeBaja, updateDiaDescanso
+  findByIds, insert, update, updateDatosPersonales, darDeBaja, updateDiaDescanso,
+  moverDeTienda, tieneHistorial, deleteById
 };

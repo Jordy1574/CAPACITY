@@ -50,7 +50,7 @@ CREATE TABLE usuarios_auditoria (
     id_auditoria SERIAL PRIMARY KEY,
     id_usuario_afectado INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
     identificador_afectado VARCHAR(150) NOT NULL,
-    accion VARCHAR(30) NOT NULL CHECK (accion IN ('CREAR', 'EDITAR_ROL', 'EDITAR_CORREO', 'RESET_PASSWORD', 'ACTIVAR', 'DESACTIVAR', 'ELIMINAR')),
+    accion VARCHAR(30) NOT NULL CHECK (accion IN ('CREAR', 'EDITAR_ROL', 'EDITAR_CORREO', 'EDITAR_SEDE', 'RESET_PASSWORD', 'ACTIVAR', 'DESACTIVAR', 'ELIMINAR')),
     detalle TEXT NULL,
     id_usuario_actor INT NULL REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
     actor_identificador VARCHAR(150) NOT NULL,

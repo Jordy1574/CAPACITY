@@ -270,7 +270,49 @@ async function updateUsuario(id, { rol, id_tienda, email }, requestingUser) {
 
   const idTienda = resolveIdTiendaForRol(nuevoRol, id_tienda !== undefined ? id_tienda : usuario.id_tienda);
 
+  // Cambiar de área (Oficina <-> Logística) mueve la cuenta y la ficha del
+  // colaborador juntas: si solo se moviera la cuenta, la persona seguiría
+  // apareciendo en los horarios de su área anterior.
+  const cambiaDeSede = idTienda !== usuario.id_tienda;
+  const sedeAnterior = cambiaDeSede ? await tiendasRepository.findById(usuario.id_tienda) : null;
+  if (cambiaDeSede) {
+    const destino = await tiendasRepository.findById(idTienda);
+    if (!destino) {
+      throw new AppError('Sede de destino no encontrada.', 400);
+    }
+    if (usuario.id_empleado) {
+      if (destino.tipo === 'TIENDA') {
+        throw new AppError(
+          'Una cuenta personal no puede moverse a una tienda: las tiendas usan una sola cuenta compartida.',
+          400
+        );
+      }
+      const ficha = await empleadosRepository.findById(usuario.id_empleado);
+      const yaEnDestino = (await empleadosRepository.findAllByDni(ficha.dni))
+        .some((f) => f.id_tienda === idTienda);
+      if (yaEnDestino) {
+        throw new AppError(`${ficha.nombre_completo} ya está registrado en ${destino.nombre_tienda}.`, 400);
+      }
+      await empleadosRepository.moverDeTienda(usuario.id_empleado, idTienda);
+    } else if (destino.tipo === 'TIENDA') {
+      const cuentaExistente = await usuariosRepository.findCuentaDeSede(idTienda);
+      if (cuentaExistente && cuentaExistente.id_usuario !== id) {
+        throw new AppError(`${destino.nombre_tienda} ya tiene su cuenta (${identificadorDe(cuentaExistente)}).`, 400);
+      }
+    }
+  }
+
   await usuariosRepository.updateRolTienda(id, { rol: rol || null, idTienda });
+
+  if (cambiaDeSede) {
+    const destino = await tiendasRepository.findById(idTienda);
+    await registrarAuditoria({
+      usuarioAfectado: usuario,
+      accion: 'EDITAR_SEDE',
+      detalle: `Sede: ${sedeAnterior?.nombre_tienda || '(sin sede)'} (${sedeAnterior?.tipo || '—'}) → ${destino.nombre_tienda} (${destino.tipo}).`,
+      requestingUser
+    });
+  }
 
   if (rol && rol !== usuario.rol) {
     await registrarAuditoria({
@@ -358,16 +400,34 @@ async function deleteUsuario(id, requestingUser) {
     throw new AppError('No puedes eliminar tu propia cuenta.', 400);
   }
 
+  // Una cuenta personal deja atras la ficha del colaborador. Si nunca se uso
+  // (sin horarios ni capacity) se borra tambien: casi siempre se elimina para
+  // volver a crearla bien, y la ficha huerfana bloqueaba ese segundo intento.
+  let detalleFicha = '';
+  let fichaBorrada = false;
+  if (usuario.id_empleado) {
+    const conHistorial = await empleadosRepository.tieneHistorial(usuario.id_empleado);
+    detalleFicha = conHistorial
+      ? ' Su ficha de colaborador se mantiene porque tiene horarios o capacity registrados.'
+      : ' Se eliminó también su ficha de colaborador, que no tenía registros.';
+    fichaBorrada = !conHistorial;
+  }
+
   await registrarAuditoria({
     usuarioAfectado: usuario,
     accion: 'ELIMINAR',
-    detalle: `Cuenta eliminada (rol ${usuario.rol}).`,
+    detalle: `Cuenta eliminada (rol ${usuario.rol}).${detalleFicha}`,
     requestingUser
   });
 
-  await usuariosRepository.deleteById(id);
+  await withTransaction(async (txQuery) => {
+    await txQuery('DELETE FROM usuarios WHERE id_usuario = $1', [id]);
+    if (fichaBorrada) {
+      await empleadosRepository.deleteById(usuario.id_empleado, txQuery);
+    }
+  });
 
-  return { message: 'Usuario eliminado exitosamente.' };
+  return { message: `Usuario eliminado exitosamente.${detalleFicha}` };
 }
 
 async function getHistorialUsuario(id, requestingUser) {
