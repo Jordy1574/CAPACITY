@@ -59,21 +59,31 @@ CREATE TABLE usuarios_auditoria (
 CREATE INDEX idx_usuarios_auditoria_afectado ON usuarios_auditoria(id_usuario_afectado);
 CREATE INDEX idx_usuarios_auditoria_fecha ON usuarios_auditoria(fecha DESC);
 
+-- Una fila = una persona EN UNA SEDE. La misma persona puede tener ficha en
+-- varias tiendas cuando va de apoyo, con un código de vendedor distinto en
+-- cada una; por eso el DNI es único por tienda y no a nivel global.
 CREATE TABLE empleados (
     id_empleado SERIAL PRIMARY KEY,
-    dni VARCHAR(15) UNIQUE NOT NULL,
+    dni VARCHAR(15) NOT NULL,
     codigo_empleado VARCHAR(20) NULL, -- Código de asesor (ej. '0101'). Opcional durante días de prueba
-    nombre_completo VARCHAR(150) NOT NULL,
+    nombre_completo VARCHAR(150) NOT NULL, -- Siempre en MAYÚSCULAS
     puesto VARCHAR(100), -- ej. 'ENCARGADA DE TIENDA', 'ASESOR DE VENTAS', 'CAJERA'
     regimen VARCHAR(10), -- 'FT' o 'PT'
     celular VARCHAR(20) NULL, -- Celular para envío de contraseña/credenciales
     correo_asesor VARCHAR(150) NULL, -- Correo corporativo de asesor
     id_tienda INT NOT NULL REFERENCES tiendas(id_tienda) ON DELETE CASCADE,
-    situacion VARCHAR(20) DEFAULT 'ACTIVO', -- 'ACTIVO', 'INACTIVO'
+    situacion VARCHAR(20) DEFAULT 'ACTIVO', -- 'ACTIVO', 'INACTIVO', 'NO_COMISIONA'
+    fecha_ingreso DATE NULL, -- No aparece en capacity/horarios de periodos anteriores. NULL = personal histórico
     fecha_baja DATE NULL, -- Fecha de retiro para filtrado de alta rotación en meses futuros
     dia_descanso VARCHAR(20) NULL, -- Día fijo de descanso semanal (ej. 'MIERCOLES'), asignado manualmente
-    horas_semana NUMERIC(5,2) NULL -- Jornada pactada. NULL = estándar del régimen (FT 48, PT 23.5)
+    horas_semana NUMERIC(5,2) NULL, -- Jornada pactada. NULL = estándar del régimen (FT 48, PT 23.5)
+    CONSTRAINT empleados_dni_tienda_key UNIQUE (dni, id_tienda)
 );
+
+-- Dentro de una sede el código de vendedor identifica una plaza: no puede
+-- repetirse. Entre sedes se evita con rangos que no se cruzan (tiendas.rango_codigos).
+CREATE UNIQUE INDEX idx_empleado_codigo_por_tienda
+    ON empleados(id_tienda, codigo_empleado) WHERE codigo_empleado IS NOT NULL;
 
 -- Ausencias y licencias. Un registro por rango cubre vacaciones, descanso
 -- médico, faltas, permisos y licencias: en el horario el día deja de verse

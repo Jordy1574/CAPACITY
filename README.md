@@ -196,6 +196,22 @@ aplican sentencias `ALTER TABLE` a mano y luego se refleja el cambio en
 ALTER TABLE empleados ADD COLUMN IF NOT EXISTS horas_semana NUMERIC(5,2) NULL;
 ```
 
+Los cambios aplicados de esta forma quedan registrados acá para poder repetirlos
+en otra base:
+
+```sql
+-- Fecha de ingreso: oculta al colaborador de los meses anteriores a su alta
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS fecha_ingreso DATE NULL;
+
+-- El DNI pasa a ser único por tienda (una persona puede apoyar en otra sede)
+ALTER TABLE empleados DROP CONSTRAINT IF EXISTS empleados_dni_key;
+ALTER TABLE empleados ADD CONSTRAINT empleados_dni_tienda_key UNIQUE (dni, id_tienda);
+
+-- Un código de vendedor no se repite dentro de la misma tienda
+CREATE UNIQUE INDEX IF NOT EXISTS idx_empleado_codigo_por_tienda
+  ON empleados(id_tienda, codigo_empleado) WHERE codigo_empleado IS NOT NULL;
+```
+
 Conviene respaldar antes de tocar una base con información real:
 
 ```bash
@@ -209,7 +225,7 @@ pg_dump -U postgres bissu_capacity > respaldo_$(date +%F).sql
 | `tiendas` | Sedes: tipo `TIENDA`, `OFICINA` o `LOGISTICA`. Las tiendas llevan código de almacén y rango de códigos de vendedor. |
 | `usuarios` | Cuentas de acceso. `email` para Admin/Supervisor, `username` para cuentas de sede. `id_empleado` marca las cuentas personales de Oficina/Logística; si es nulo, es la cuenta compartida de la sede. |
 | `usuarios_auditoria` | Historial de cambios sobre cuentas. Guarda copia del identificador para que el registro sobreviva a la eliminación de la cuenta. |
-| `empleados` | Colaboradores. `regimen` (FT/PT) define la dotación, `horas_semana` la jornada pactada y `situacion` incluye `NO_COMISIONA`. |
+| `empleados` | Una fila por colaborador **y sede**. `regimen` (FT/PT) define la dotación, `horas_semana` la jornada pactada, `situacion` incluye `NO_COMISIONA` y `fecha_ingreso` lo oculta de los periodos anteriores a su alta. El DNI es único por tienda: la misma persona puede tener ficha en varias sedes cuando va de apoyo, con un código de vendedor distinto en cada una. |
 | `empleado_novedades` | Vacaciones, descanso médico, faltas, permisos y licencias, por rango de fechas. |
 | `capacity_diario` | Un registro por colaborador y día: 1 si trabajó en franja comercial, 0 si no. Se llena solo desde el horario oficial. |
 | `horario_turnos` | Turnos del horario vigente. Varias filas por día permiten turnos partidos; un turno puede cruzar medianoche. |

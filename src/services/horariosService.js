@@ -61,7 +61,7 @@ async function getHorarioSemana(user, semanaInicioInput, queryIdTienda) {
   }
 
   const idEmpleadoPropio = empleadoPropioDe(user);
-  const todosLosEmpleados = await empleadosRepository.getActiveEmpleados(idTienda, semanaInicio);
+  const todosLosEmpleados = await empleadosRepository.getActiveEmpleados(idTienda, semanaInicio, undefined, weekDates[6]);
   const empleados = idEmpleadoPropio
     ? todosLosEmpleados.filter((e) => e.id_empleado === idEmpleadoPropio)
     : todosLosEmpleados;

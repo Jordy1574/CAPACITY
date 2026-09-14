@@ -45,7 +45,12 @@ export async function apiFetch(path, options = {}) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error || 'Error inesperado del servidor.');
+    // El status y el cuerpo se conservan: algunos errores (409 de DNI repetido,
+    // por ejemplo) traen datos que la pantalla necesita para repreguntar.
+    const error = new Error(data.error || 'Error inesperado del servidor.');
+    error.status = res.status;
+    error.payload = data;
+    throw error;
   }
   return data;
 }

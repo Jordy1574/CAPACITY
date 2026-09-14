@@ -3,7 +3,10 @@ const empleadosRepository = require('../repositories/empleadosRepository');
 const capacityRepository = require('../repositories/capacityRepository');
 const horariosRepository = require('../repositories/horariosRepository');
 const { getDaysInMonth, getWeekDates, getMondayOf, mesActual, horaAMinutos } = require('../utils/dates');
+const { normalizarNombre } = require('../utils/texto');
+const { parsearRango } = require('./tiendasService');
 const { ROLES_ADMIN } = require('../middleware/roles');
+const { withTransaction } = require('../config/db');
 const AppError = require('../errors/AppError');
 
 // NO_COMISIONA: el colaborador trabaja y se le arma horario, pero no suma
@@ -41,7 +44,8 @@ async function getCapacityMatrix(user, mesInput, queryIdTienda) {
 
   // Una cuenta personal (Oficina/Logística) solo ve su propia fila; la
   // cuenta compartida de una tienda ve a todo su equipo.
-  const todosLosEmpleados = await empleadosRepository.getActiveEmpleados(idTienda, firstDayOfMonth);
+  const ultimoDiaDelMes = getDaysInMonth(mes).slice(-1)[0];
+  const todosLosEmpleados = await empleadosRepository.getActiveEmpleados(idTienda, firstDayOfMonth, undefined, ultimoDiaDelMes);
   const empleados = user.rol === 'TIENDA' && user.id_empleado
     ? todosLosEmpleados.filter(e => e.id_empleado === user.id_empleado)
     : todosLosEmpleados;
@@ -108,8 +112,18 @@ async function getCapacityMatrix(user, mesInput, queryIdTienda) {
   };
 }
 
+function limpiar(valor) {
+  const v = String(valor ?? '').trim();
+  return v === '' ? null : v;
+}
+
+// Datos que pertenecen a la persona y no al puesto que ocupa en una sede: se
+// mantienen iguales en todas sus fichas. El código de vendedor NO entra acá,
+// porque es propio de cada tienda.
+const CAMPOS_DE_LA_PERSONA = ['nombre_completo', 'celular', 'correo_asesor', 'regimen'];
+
 async function createEmpleado(user, body) {
-  const { dni, nombre_completo, puesto, regimen, celular, correo_asesor, codigo_empleado, id_tienda } = body || {};
+  const { dni, nombre_completo, puesto, regimen, celular, correo_asesor, codigo_empleado, id_tienda, fecha_ingreso, modo_traslado } = body || {};
 
   if (!dni || !nombre_completo) {
     throw new AppError('Debes proporcionar al menos DNI y Nombre Completo.', 400);
@@ -123,27 +137,104 @@ async function createEmpleado(user, body) {
     throw new AppError('ID de tienda inválido.', 400);
   }
 
-  const existing = await empleadosRepository.findByDni(dni.trim());
-  if (existing) {
-    throw new AppError('Ya existe un colaborador registrado con este DNI.', 400);
+  const dniLimpio = String(dni).trim();
+  const fichas = await empleadosRepository.findAllByDni(dniLimpio);
+
+  // Ya registrado en esta misma tienda: eso sí sigue siendo un duplicado.
+  if (fichas.some(f => f.id_tienda === targetTiendaId)) {
+    throw new AppError('Este colaborador ya está registrado en esta sede.', 400);
   }
 
-  await empleadosRepository.insert({
-    dni: dni.trim(),
-    codigo_empleado: codigo_empleado && codigo_empleado.trim() !== '' ? codigo_empleado.trim() : null,
-    nombre_completo: nombre_completo.trim(),
-    puesto: puesto || 'ASESOR DE VENTAS',
-    regimen: regimen || 'FT',
-    celular: celular && celular.trim() !== '' ? celular.trim() : null,
-    correo_asesor: correo_asesor && correo_asesor.trim() !== '' ? correo_asesor.trim() : null,
-    id_tienda: targetTiendaId
+  // Registrado en otra sede: puede ser apoyo (queda activo en ambas) o
+  // traslado (se cierra la ficha anterior). Quien registra debe decidirlo.
+  if (fichas.length > 0 && !modo_traslado) {
+    const sedes = fichas.map(f => f.nombre_tienda).join(', ');
+    throw new AppError(
+      `${fichas[0].nombre_completo} ya está registrado en ${sedes}. Indica si es un apoyo o un traslado.`,
+      409,
+      {
+        requiere_definir_modo: true,
+        persona: {
+          dni: dniLimpio,
+          nombre_completo: fichas[0].nombre_completo,
+          celular: fichas[0].celular,
+          correo_asesor: fichas[0].correo_asesor,
+          regimen: fichas[0].regimen
+        },
+        fichas: fichas.map(f => ({
+          id_tienda: f.id_tienda,
+          nombre_tienda: f.nombre_tienda,
+          codigo_empleado: f.codigo_empleado,
+          situacion: f.situacion
+        }))
+      }
+    );
+  }
+  if (modo_traslado && !['APOYO', 'TRASLADO'].includes(modo_traslado)) {
+    throw new AppError('Indica si el registro es un apoyo o un traslado.', 400);
+  }
+
+  const codigo = limpiar(codigo_empleado);
+  if (codigo) {
+    await assertCodigoLibre(targetTiendaId, codigo);
+  }
+
+  await withTransaction(async (txQuery) => {
+    await empleadosRepository.insert({
+      dni: dniLimpio,
+      codigo_empleado: codigo,
+      nombre_completo: normalizarNombre(nombre_completo),
+      puesto: puesto || 'ASESOR DE VENTAS',
+      regimen: regimen || 'FT',
+      celular: limpiar(celular),
+      correo_asesor: limpiar(correo_asesor),
+      id_tienda: targetTiendaId,
+      fecha_ingreso: limpiar(fecha_ingreso)
+    }, txQuery);
+
+    if (modo_traslado === 'TRASLADO') {
+      const hoy = new Date().toISOString().substring(0, 10);
+      for (const ficha of fichas) {
+        await empleadosRepository.darDeBaja(ficha.id_empleado, fecha_ingreso || hoy, txQuery);
+      }
+    }
   });
 
-  return { message: 'Colaborador registrado exitosamente.' };
+  const detalle = modo_traslado === 'TRASLADO'
+    ? ' Se cerró su registro en la sede anterior.'
+    : modo_traslado === 'APOYO'
+      ? ' Queda activo también en su sede de origen.'
+      : '';
+  return { message: `Colaborador registrado exitosamente.${detalle}` };
+}
+
+// Un código de vendedor no puede estar ocupado por otra persona en la misma
+// tienda, ni salirse del rango asignado a esa sede. Como los rangos no se
+// cruzan entre sedes, respetarlos es lo que evita que dos tiendas terminen
+// usando el mismo código para personas distintas.
+async function assertCodigoLibre(idTienda, codigo, idEmpleadoActual = null, validarRango = true) {
+  const ocupado = await empleadosRepository.findByCodigoEnTienda(idTienda, codigo);
+  if (ocupado && ocupado.id_empleado !== idEmpleadoActual) {
+    throw new AppError(`El código ${codigo} ya está asignado a ${ocupado.nombre_completo} en esta sede.`, 400);
+  }
+
+  if (!validarRango) return;
+
+  const tienda = await tiendasRepository.findById(idTienda);
+  const rango = parsearRango(tienda?.rango_codigos);
+  const numero = parseInt(codigo, 10);
+  if (!rango || !Number.isFinite(numero)) return;
+
+  if (numero < rango.desde || numero > rango.hasta) {
+    throw new AppError(
+      `El código ${codigo} está fuera del rango de ${tienda.nombre_tienda} (${tienda.rango_codigos}).`,
+      400
+    );
+  }
 }
 
 async function updateEmpleado(user, idEmpleado, body) {
-  const { dni, nombre_completo, puesto, regimen, celular, correo_asesor, codigo_empleado, situacion, fecha_baja, horas_semana } = body || {};
+  const { dni, nombre_completo, puesto, regimen, celular, correo_asesor, codigo_empleado, situacion, fecha_baja, horas_semana, fecha_ingreso } = body || {};
 
   const emp = await empleadosRepository.findById(idEmpleado);
   if (!emp) {
@@ -159,21 +250,49 @@ async function updateEmpleado(user, idEmpleado, body) {
   }
 
   const cleanFechaBaja = situacion === 'INACTIVO' ? (fecha_baja || new Date().toISOString().substring(0, 10)) : null;
+  const codigo = limpiar(codigo_empleado);
+  if (codigo) {
+    // El rango solo se exige cuando el código cambia: hay fichas antiguas con
+    // códigos fuera del rango actual de su sede y editar otro dato no debe fallar.
+    await assertCodigoLibre(emp.id_tienda, codigo, idEmpleado, codigo !== emp.codigo_empleado);
+  }
 
-  await empleadosRepository.update(idEmpleado, {
-    dni: dni ? dni.trim() : null,
-    nombre_completo: nombre_completo ? nombre_completo.trim() : null,
+  const datos = {
+    dni: dni ? String(dni).trim() : null,
+    nombre_completo: nombre_completo ? normalizarNombre(nombre_completo) : null,
     puesto: puesto || null,
     regimen: regimen || null,
-    celular: celular && celular.trim() !== '' ? celular.trim() : null,
-    correo_asesor: correo_asesor && correo_asesor.trim() !== '' ? correo_asesor.trim() : null,
-    codigo_empleado: codigo_empleado && codigo_empleado.trim() !== '' ? codigo_empleado.trim() : null,
+    celular: limpiar(celular),
+    correo_asesor: limpiar(correo_asesor),
+    codigo_empleado: codigo,
     situacion: situacion || null,
     fecha_baja: cleanFechaBaja,
-    horas_semana: horas_semana === undefined || horas_semana === '' ? null : horas_semana
+    horas_semana: horas_semana === undefined || horas_semana === '' ? null : horas_semana,
+    fecha_ingreso: limpiar(fecha_ingreso)
+  };
+
+  // Si la persona está en más de una sede (apoyo), sus datos personales se
+  // mantienen iguales en todas sus fichas. El código de vendedor, el estado y
+  // la jornada son propios de cada tienda y no se propagan.
+  const otrasFichas = (await empleadosRepository.findAllByDni(datos.dni || emp.dni))
+    .filter(f => f.id_empleado !== idEmpleado);
+
+  await withTransaction(async (txQuery) => {
+    await empleadosRepository.update(idEmpleado, datos, txQuery);
+
+    if (otrasFichas.length > 0) {
+      const comunes = {};
+      CAMPOS_DE_LA_PERSONA.forEach(campo => { comunes[campo] = datos[campo]; });
+      for (const ficha of otrasFichas) {
+        await empleadosRepository.updateDatosPersonales(ficha.id_empleado, comunes, txQuery);
+      }
+    }
   });
 
-  return { message: 'Datos del colaborador actualizados exitosamente.' };
+  const extra = otrasFichas.length > 0
+    ? ` Sus datos personales se actualizaron también en ${otrasFichas.length} sede(s) donde está registrado.`
+    : '';
+  return { message: `Datos del colaborador actualizados exitosamente.${extra}` };
 }
 
 // La dotación es la plaza que ocupa la persona, no su asistencia:

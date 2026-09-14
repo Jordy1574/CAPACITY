@@ -73,8 +73,15 @@ export default function CapacityPage() {
       showToast(result.message || 'Colaborador guardado exitosamente.', 'success');
       setEmployeeModal({ open: false, employee: null });
       invalidateCapacity(mes, storeId);
+      return null;
     } catch (err) {
+      // El 409 de DNI ya registrado no es un error a mostrar: el modal usa el
+      // detalle para preguntar si se trata de un apoyo o de un traslado.
+      if (err.payload?.requiere_definir_modo) {
+        return err.payload;
+      }
       showToast(err.message, 'error');
+      return null;
     } finally {
       setSavingEmployee(false);
     }

@@ -2,9 +2,11 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const usuariosRepository = require('../repositories/usuariosRepository');
 const tiendasRepository = require('../repositories/tiendasRepository');
+const tiendasService = require('./tiendasService');
 const empleadosRepository = require('../repositories/empleadosRepository');
 const auditoriaRepository = require('../repositories/auditoriaRepository');
 const { withTransaction } = require('../config/db');
+const { normalizarNombre } = require('../utils/texto');
 const AppError = require('../errors/AppError');
 
 const ROLES_VALIDOS = ['TIENDA', 'SUPERVISOR', 'RRHH', 'ADMIN'];
@@ -93,12 +95,11 @@ async function resolverEmpleadoDeCuenta(empleadoInput, tienda) {
   }
 
   const dniLimpio = String(dni).trim();
-  const existente = await empleadosRepository.findByDni(dniLimpio);
+  // La misma persona puede tener ficha en varias sedes: interesa la de ESTA.
+  const fichas = await empleadosRepository.findAllByDni(dniLimpio);
+  const existente = fichas.find(f => f.id_tienda === tienda.id_tienda);
 
   if (existente) {
-    if (existente.id_tienda !== tienda.id_tienda) {
-      throw new AppError('Ya existe un colaborador con este DNI en otra sede.', 400);
-    }
     const cuentaPrevia = await usuariosRepository.findByEmpleado(existente.id_empleado);
     if (cuentaPrevia) {
       throw new AppError('Este colaborador ya tiene una cuenta asignada.', 400);
@@ -109,7 +110,7 @@ async function resolverEmpleadoDeCuenta(empleadoInput, tienda) {
   const inserted = await empleadosRepository.insert({
     dni: dniLimpio,
     codigo_empleado: null,
-    nombre_completo: nombre_completo.trim(),
+    nombre_completo: normalizarNombre(nombre_completo),
     puesto: puesto && puesto.trim() ? puesto.trim() : null,
     regimen: regimen && regimen.trim() ? regimen.trim() : 'FT',
     celular: celular && celular.trim() ? celular.trim() : null,
@@ -117,15 +118,16 @@ async function resolverEmpleadoDeCuenta(empleadoInput, tienda) {
     id_tienda: tienda.id_tienda
   });
 
-  return { id_empleado: inserted?.[0]?.id_empleado, nombre_completo: nombre_completo.trim() };
+  return { id_empleado: inserted?.[0]?.id_empleado, nombre_completo: normalizarNombre(nombre_completo) };
 }
 
 // Alta de una tienda junto con su única cuenta (la de la encargada), en una
 // sola transacción para no dejar una tienda sin cuenta si algo falla.
 async function crearTiendaConCuenta(datosTienda, requestingUser) {
-  const { nombre_tienda, codigo_almacen, rango_codigos, correo_tienda } = datosTienda || {};
+  const { codigo_almacen, rango_codigos, correo_tienda } = datosTienda || {};
+  const nombre_tienda = normalizarNombre(datosTienda?.nombre_tienda);
 
-  if (!nombre_tienda || !nombre_tienda.trim()) {
+  if (!nombre_tienda) {
     throw new AppError('Debes indicar el nombre de la tienda.', 400);
   }
 
@@ -140,13 +142,17 @@ async function crearTiendaConCuenta(datosTienda, requestingUser) {
     }
   }
 
+  // Mismo control que al crear una sede desde su propio flujo: dos tiendas no
+  // pueden compartir códigos de vendedor.
+  await tiendasService.assertRangoLibre(rango_codigos);
+
   const username = await generarUsernameUnico(nombre_tienda);
   const password = generarPassword();
   const passwordHash = bcrypt.hashSync(password, 10);
 
   const nuevoId = await withTransaction(async (txQuery) => {
     const tiendaInsertada = await tiendasRepository.insert({
-      nombreTienda: nombre_tienda.trim(),
+      nombreTienda: nombre_tienda,
       codigoAlmacen: codigo_almacen && codigo_almacen.trim() ? codigo_almacen.trim() : null,
       correoTienda: correo,
       tipo: 'TIENDA',
@@ -168,7 +174,7 @@ async function crearTiendaConCuenta(datosTienda, requestingUser) {
   await registrarAuditoria({
     usuarioAfectado: { id_usuario: nuevoId, email: null, username },
     accion: 'CREAR',
-    detalle: `Tienda "${nombre_tienda.trim()}" creada con su cuenta.`,
+    detalle: `Tienda "${nombre_tienda}" creada con su cuenta.`,
     requestingUser
   });
 

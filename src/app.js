@@ -10,7 +10,7 @@ const fastify = require('fastify')({
 
 fastify.setErrorHandler((err, request, reply) => {
   if (err.isAppError) {
-    return reply.status(err.statusCode).send({ error: err.message });
+    return reply.status(err.statusCode).send({ error: err.message, ...(err.detalle || {}) });
   }
   if (err.validation) {
     return reply.status(400).send({ error: 'Datos inválidos: ' + err.message });

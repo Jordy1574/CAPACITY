@@ -2,7 +2,9 @@ const { query } = require('../config/db');
 
 // Empleados ACTIVOS + empleados INACTIVOS cuya fecha_baja sea en el mes actual o posterior
 // (gestión de alta rotación: no desaparecen de meses donde sí trabajaron).
-function getActiveEmpleados(idTienda, firstDayOfMonth, queryFn = query) {
+// finDelPeriodo: ultimo dia del mes o de la semana consultada. Se usa para
+// ocultar a quien ingreso despues de ese periodo.
+function getActiveEmpleados(idTienda, firstDayOfMonth, queryFn = query, finDelPeriodo = '9999-12-31') {
   const sql = `
     SELECT
       id_empleado,
@@ -17,6 +19,7 @@ function getActiveEmpleados(idTienda, firstDayOfMonth, queryFn = query) {
       CAST(fecha_baja AS TEXT) AS fecha_baja,
       dia_descanso,
       horas_semana,
+      CAST(fecha_ingreso AS TEXT) AS fecha_ingreso,
       id_tienda
     FROM empleados
     WHERE id_tienda = $1
@@ -24,23 +27,63 @@ function getActiveEmpleados(idTienda, firstDayOfMonth, queryFn = query) {
         situacion IN ('ACTIVO', 'NO_COMISIONA')
         OR (situacion = 'INACTIVO' AND (fecha_baja IS NULL OR CAST(fecha_baja AS TEXT) >= $2))
       )
+      -- No aparece en periodos anteriores a su ingreso. Sin fecha cargada se
+      -- asume que ya estaba (los colaboradores historicos no la tienen).
+      AND (fecha_ingreso IS NULL OR CAST(fecha_ingreso AS TEXT) <= $3)
     ORDER BY
       CASE WHEN situacion <> 'INACTIVO' THEN 1 ELSE 2 END ASC,
       CASE WHEN codigo_empleado IS NULL THEN 1 ELSE 0 END ASC,
       codigo_empleado ASC,
       nombre_completo ASC
   `;
-  return queryFn(sql, [idTienda, firstDayOfMonth]);
+  return queryFn(sql, [idTienda, firstDayOfMonth, finDelPeriodo]);
 }
 
 async function findById(idEmpleado) {
-  const rows = await query('SELECT id_empleado, id_tienda, nombre_completo, dni FROM empleados WHERE id_empleado = $1', [idEmpleado]);
+  const rows = await query('SELECT id_empleado, id_tienda, nombre_completo, dni, codigo_empleado FROM empleados WHERE id_empleado = $1', [idEmpleado]);
   return rows[0] || null;
 }
 
-async function findByDni(dni) {
-  const rows = await query('SELECT id_empleado, id_tienda, nombre_completo FROM empleados WHERE dni = $1', [dni]);
+// Todas las fichas de una persona: puede estar en varias sedes por apoyo.
+function findAllByDni(dni) {
+  return query(
+    `SELECT e.id_empleado, e.dni, e.nombre_completo, e.celular, e.correo_asesor, e.regimen,
+            e.puesto, e.codigo_empleado, e.situacion, e.id_tienda, t.nombre_tienda
+     FROM empleados e
+     INNER JOIN tiendas t ON t.id_tienda = e.id_tienda
+     WHERE e.dni = $1
+     ORDER BY t.nombre_tienda`,
+    [dni]
+  );
+}
+
+async function findByCodigoEnTienda(idTienda, codigo) {
+  const rows = await query(
+    'SELECT id_empleado, nombre_completo FROM empleados WHERE id_tienda = $1 AND codigo_empleado = $2',
+    [idTienda, codigo]
+  );
   return rows[0] || null;
+}
+
+function darDeBaja(idEmpleado, fechaBaja, queryFn = query) {
+  return queryFn(
+    "UPDATE empleados SET situacion = 'INACTIVO', fecha_baja = $1 WHERE id_empleado = $2",
+    [fechaBaja, idEmpleado]
+  );
+}
+
+// Solo los campos de la persona: no toca codigo, estado ni jornada, que son
+// propios de cada sede.
+function updateDatosPersonales(idEmpleado, datos, queryFn = query) {
+  return queryFn(
+    `UPDATE empleados
+     SET nombre_completo = COALESCE($1, nombre_completo),
+         celular = $2,
+         correo_asesor = $3,
+         regimen = COALESCE($4, regimen)
+     WHERE id_empleado = $5`,
+    [datos.nombre_completo, datos.celular, datos.correo_asesor, datos.regimen, idEmpleado]
+  );
 }
 
 function findByIds(idArray, queryFn = query) {
@@ -48,13 +91,13 @@ function findByIds(idArray, queryFn = query) {
   return queryFn(`SELECT id_empleado, id_tienda, dia_descanso FROM empleados WHERE id_empleado IN (${placeholders})`, idArray);
 }
 
-function insert(data) {
+function insert(data, queryFn = query) {
   const insertSql = `
-    INSERT INTO empleados (dni, codigo_empleado, nombre_completo, puesto, regimen, celular, correo_asesor, id_tienda, situacion)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVO')
+    INSERT INTO empleados (dni, codigo_empleado, nombre_completo, puesto, regimen, celular, correo_asesor, id_tienda, situacion, fecha_ingreso)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVO', $9)
     RETURNING id_empleado
   `;
-  return query(insertSql, [
+  return queryFn(insertSql, [
     data.dni,
     data.codigo_empleado,
     data.nombre_completo,
@@ -62,11 +105,12 @@ function insert(data) {
     data.regimen,
     data.celular,
     data.correo_asesor,
-    data.id_tienda
+    data.id_tienda,
+    data.fecha_ingreso || null
   ]);
 }
 
-function update(idEmpleado, data) {
+function update(idEmpleado, data, queryFn = query) {
   const updateSql = `
     UPDATE empleados
     SET dni = COALESCE($1, dni),
@@ -78,10 +122,11 @@ function update(idEmpleado, data) {
         codigo_empleado = $7,
         situacion = COALESCE($8, situacion),
         fecha_baja = $9,
-        horas_semana = $10
-    WHERE id_empleado = $11
+        horas_semana = $10,
+        fecha_ingreso = $11
+    WHERE id_empleado = $12
   `;
-  return query(updateSql, [
+  return queryFn(updateSql, [
     data.dni,
     data.nombre_completo,
     data.puesto,
@@ -92,6 +137,7 @@ function update(idEmpleado, data) {
     data.situacion,
     data.fecha_baja,
     data.horas_semana,
+    data.fecha_ingreso || null,
     idEmpleado
   ]);
 }
@@ -100,4 +146,7 @@ function updateDiaDescanso(idEmpleado, diaDescanso, queryFn = query) {
   return queryFn('UPDATE empleados SET dia_descanso = $1 WHERE id_empleado = $2', [diaDescanso, idEmpleado]);
 }
 
-module.exports = { getActiveEmpleados, findById, findByDni, findByIds, insert, update, updateDiaDescanso };
+module.exports = {
+  getActiveEmpleados, findById, findAllByDni, findByCodigoEnTienda,
+  findByIds, insert, update, updateDatosPersonales, darDeBaja, updateDiaDescanso
+};
