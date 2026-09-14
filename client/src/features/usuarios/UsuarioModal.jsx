@@ -41,8 +41,14 @@ function formatRango(desde, hasta) {
   return `${d.padStart(4, '0')}-${h.padStart(4, '0')}`;
 }
 
+// Los rangos son bloques de 10 plazas (0310-0319), así que al escribir el
+// inicio se propone el final; el usuario puede cambiarlo si su sede es distinta.
+const PLAZAS_POR_BLOQUE = 10;
+
 export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit, defaultRol = 'TIENDA', rolesDisponibles = ['TIENDA', 'SUPERVISOR', 'ADMIN'], sedeTipo }) {
   const [form, setForm] = useState(EMPTY_FORM);
+  // Mientras el usuario no toque el "hasta", se sigue autocompletando.
+  const [hastaEditado, setHastaEditado] = useState(false);
   const { data: tiendas } = useTiendas();
   const mostrarSelectorRol = rolesDisponibles.length > 1;
   const sedesDisponibles = (tiendas || []).filter((t) => !sedeTipo || t.tipo === sedeTipo);
@@ -50,6 +56,7 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
 
   useEffect(() => {
     if (!open) return;
+    setHastaEditado(Boolean(usuario));
     if (usuario) {
       const rango = parseRango(tiendaDelUsuario?.rango_codigos);
       setForm({
@@ -80,21 +87,57 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
   const esCuentaDeTienda = form.rol === 'TIENDA' && sedeTipo === 'TIENDA';
   const esCuentaPersonal = form.rol === 'TIENDA' && (sedeTipo === 'OFICINA' || sedeTipo === 'LOGISTICA');
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  // Los nombres se guardan en mayúsculas; se muestran así mientras se escriben.
+  const setMayus = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value.toUpperCase() }));
 
   const desdeNum = parseInt(form.rango_desde, 10);
   const hastaNum = parseInt(form.rango_hasta, 10);
   const rangoInvertido = Number.isFinite(desdeNum) && Number.isFinite(hastaNum) && hastaNum < desdeNum;
   const plazas = Number.isFinite(desdeNum) && Number.isFinite(hastaNum) && !rangoInvertido ? hastaNum - desdeNum + 1 : null;
 
+  // Al escribir el inicio se completa el final del bloque, salvo que el usuario
+  // ya haya puesto uno propio.
+  const setRangoDesde = (e) => {
+    const valor = e.target.value;
+    setForm((f) => {
+      const inicio = parseInt(valor, 10);
+      const autocompletar = !hastaEditado && Number.isFinite(inicio);
+      return {
+        ...f,
+        rango_desde: valor,
+        rango_hasta: autocompletar ? String(inicio + PLAZAS_POR_BLOQUE - 1).padStart(4, '0') : f.rango_hasta
+      };
+    });
+  };
+
+  const setRangoHasta = (e) => {
+    setHastaEditado(e.target.value !== '');
+    setForm((f) => ({ ...f, rango_hasta: e.target.value }));
+  };
+
+  // Aviso temprano de cruce: el backend igual lo rechaza, pero así el usuario
+  // lo ve antes de intentar guardar.
+  const tiendaCruzada = (() => {
+    if (!Number.isFinite(desdeNum) || !Number.isFinite(hastaNum) || rangoInvertido) return null;
+    return (tiendas || []).find((t) => {
+      if (usuario && t.id_tienda === usuario.id_tienda) return false;
+      const otro = parseRango(t.rango_codigos);
+      const oDesde = parseInt(otro.desde, 10);
+      const oHasta = parseInt(otro.hasta, 10);
+      if (!Number.isFinite(oDesde) || !Number.isFinite(oHasta)) return false;
+      return desdeNum <= oHasta && oDesde <= hastaNum;
+    });
+  })();
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (rangoInvertido) return;
+    if (rangoInvertido || tiendaCruzada) return;
 
     if (esCuentaDeTienda) {
       onSubmit({
         rol: 'TIENDA',
         tienda: {
-          nombre_tienda: form.nombre_tienda.trim(),
+          nombre_tienda: form.nombre_tienda.trim().toUpperCase(),
           codigo_almacen: form.codigo_almacen.trim(),
           rango_codigos: formatRango(form.rango_desde, form.rango_hasta),
           correo_tienda: form.correo_tienda.trim()
@@ -115,7 +158,7 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
     if (esCuentaPersonal && !isEdit) {
       payload.empleado = {
         dni: form.dni.trim(),
-        nombre_completo: form.nombre_completo.trim(),
+        nombre_completo: form.nombre_completo.trim().toUpperCase(),
         puesto: form.puesto.trim(),
         celular: form.celular.trim()
       };
@@ -180,7 +223,7 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
             <>
               <div>
                 <label className={labelClass}>Nombre de la Tienda *</label>
-                <input type="text" required value={form.nombre_tienda} onChange={set('nombre_tienda')} placeholder="ej. San Isidro" className={inputClass} />
+                <input type="text" required value={form.nombre_tienda} onChange={setMayus('nombre_tienda')} placeholder="EJ. SAN ISIDRO" className={`${inputClass} uppercase`} />
               </div>
               <div>
                 <label className={labelClass}>Código de Almacén</label>
@@ -194,9 +237,9 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
                     min="0"
                     inputMode="numeric"
                     value={form.rango_desde}
-                    onChange={set('rango_desde')}
+                    onChange={setRangoDesde}
                     required={Boolean(form.rango_hasta)}
-                    placeholder="Desde"
+                    placeholder="Desde (ej. 0310)"
                     className={inputClass}
                   />
                   <span className="text-gray-400 text-xs font-bold">a</span>
@@ -205,7 +248,7 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
                     min="0"
                     inputMode="numeric"
                     value={form.rango_hasta}
-                    onChange={set('rango_hasta')}
+                    onChange={setRangoHasta}
                     required={Boolean(form.rango_desde)}
                     placeholder="Hasta"
                     className={inputClass}
@@ -214,9 +257,19 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
                 {rangoInvertido && (
                   <p className="text-[10px] text-red-600 mt-1">El código final debe ser mayor o igual al inicial.</p>
                 )}
-                {plazas !== null && (
+                {tiendaCruzada && (
+                  <p className="text-[10px] text-red-600 mt-1">
+                    Este rango se cruza con el de {tiendaCruzada.nombre_tienda} ({tiendaCruzada.rango_codigos}). Dos sedes no pueden compartir códigos.
+                  </p>
+                )}
+                {!tiendaCruzada && plazas !== null && (
                   <p className="text-[10px] text-gray-500 mt-1">
                     {formatRango(form.rango_desde, form.rango_hasta)} — {plazas} {plazas === 1 ? 'plaza' : 'plazas'}
+                  </p>
+                )}
+                {!hastaEditado && (
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Al escribir el código inicial se completa el bloque de {PLAZAS_POR_BLOQUE} plazas; puedes ajustarlo.
                   </p>
                 )}
               </div>
@@ -233,7 +286,7 @@ export default function UsuarioModal({ open, usuario, saving, onClose, onSubmit,
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass}>Nombre Completo *</label>
-                  <input type="text" required value={form.nombre_completo} onChange={set('nombre_completo')} placeholder="ej. María Torres" className={inputClass} />
+                  <input type="text" required value={form.nombre_completo} onChange={setMayus('nombre_completo')} placeholder="EJ. MARÍA TORRES" className={`${inputClass} uppercase`} />
                 </div>
                 <div>
                   <label className={labelClass}>DNI *</label>
