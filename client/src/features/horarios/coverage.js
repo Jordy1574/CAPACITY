@@ -116,6 +116,28 @@ export function horasContratoDe(empleado) {
   return HORAS_SEMANA_ESTANDAR[empleado?.regimen] ?? HORAS_SEMANA_ESTANDAR.FT;
 }
 
+// Turno sugerido al abrir una celda vacía. Un PT no trabaja la misma jornada
+// que un FT, así que proponerle 09:00-18:00 obligaba a corregir siempre.
+// La jornada diaria sale del contrato repartido en 6 días (uno de descanso);
+// a partir de 6 horas se suma la hora de refrigerio, que no es tiempo trabajado.
+const DIAS_LABORABLES_SEMANA = 6;
+const HORA_INICIO_POR_DEFECTO = 9;
+
+export function turnoPorDefecto(empleado) {
+  const horasDia = horasContratoDe(empleado) / DIAS_LABORABLES_SEMANA;
+  const jornada = Math.round(horasDia * 2) / 2; // al medio hora más cercano
+  const duracion = jornada >= 6 ? jornada + 1 : jornada;
+  const fin = HORA_INICIO_POR_DEFECTO + duracion;
+
+  const comoHora = (valor) => {
+    const h = Math.floor(valor) % 24;
+    const m = Math.round((valor - Math.floor(valor)) * 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  return { hora_inicio: comoHora(HORA_INICIO_POR_DEFECTO), hora_fin: comoHora(fin) };
+}
+
 export const DIA_DESCANSO_OPCIONES = [
   { value: 'LUNES', label: 'Lunes' },
   { value: 'MARTES', label: 'Martes' },

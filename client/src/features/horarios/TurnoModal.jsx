@@ -2,18 +2,17 @@ import { useEffect, useState } from 'react';
 import { useConfirm } from '../../hooks/useConfirm';
 import { useToast } from '../../hooks/useToast';
 import { validateBloques } from './turnoValidation';
-import { DIA_DESCANSO_A_INDICE, labelDiaDescanso } from './coverage';
+import { DIA_DESCANSO_A_INDICE, horasContratoDe, labelDiaDescanso, turnoPorDefecto } from './coverage';
 
-const DEFAULT_BLOCK = { hora_inicio: '09:00', hora_fin: '18:00' };
-
-export default function TurnoModal({ open, empNombre, fecha, initialBlocks, diaDescansoEmpleado, onClose, onSubmit }) {
+export default function TurnoModal({ open, empNombre, fecha, initialBlocks, empleado, diaDescansoEmpleado, onClose, onSubmit }) {
   const [blocks, setBlocks] = useState([]);
   const confirm = useConfirm();
   const showToast = useToast();
 
   useEffect(() => {
     if (!open) return;
-    setBlocks(initialBlocks && initialBlocks.length > 0 ? initialBlocks.map((b) => ({ ...b })) : [{ ...DEFAULT_BLOCK }]);
+    setBlocks(initialBlocks && initialBlocks.length > 0 ? initialBlocks.map((b) => ({ ...b })) : [turnoPorDefecto(empleado)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialBlocks]);
 
   if (!open) return null;
@@ -21,12 +20,13 @@ export default function TurnoModal({ open, empNombre, fecha, initialBlocks, diaD
   const subtitle = (() => {
     const dateObj = new Date(`${fecha}T00:00:00`);
     const fechaFmt = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-    return `${empNombre} — ${fechaFmt}`;
+    const jornada = empleado ? ` — ${empleado.regimen || 'FT'} ${horasContratoDe(empleado)}h/sem` : '';
+    return `${empNombre} — ${fechaFmt}${jornada}`;
   })();
 
   const addBlock = () => {
     const last = blocks[blocks.length - 1];
-    const nuevaHora = last ? last.hora_fin : '09:00';
+    const nuevaHora = last ? last.hora_fin : turnoPorDefecto(empleado).hora_inicio;
     setBlocks((prev) => [...prev, { hora_inicio: nuevaHora, hora_fin: nuevaHora }]);
   };
 

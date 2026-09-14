@@ -146,6 +146,7 @@ export default function SolicitudReviewOverlay({
   const turnoBlocksForModal = turnoModal.open
     ? reviewChanges[`${turnoModal.idEmpleado}_${turnoModal.fecha}`]?.turnos ?? turnoModal.blocks
     : [];
+  const turnoEmpleadoData = turnoModal.open ? baseEmpleados.find((e) => e.id_empleado === turnoModal.idEmpleado) : null;
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm overflow-y-auto p-4">
@@ -251,6 +252,7 @@ export default function SolicitudReviewOverlay({
         empNombre={turnoModal.empNombre}
         fecha={turnoModal.fecha}
         initialBlocks={turnoBlocksForModal}
+        empleado={turnoEmpleadoData}
         diaDescansoEmpleado={null}
         onClose={() => setTurnoModal({ open: false })}
         onSubmit={handleTurnoSubmit}
