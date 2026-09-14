@@ -11,6 +11,7 @@ import { bulkUpdateHorarios, crearSolicitud, descargarHorarioXlsx, updateDiaDesc
 import { descargarNodoComoImagen } from '../../utils/descargarImagen';
 import { addDaysToDateStr, getMondayOf, getWeekDates, formatWeekLabel } from './dateUtils';
 import { useHorarioWeek, useInvalidateHorarios } from './useHorarioWeek';
+import { guardarBorrador, leerBorrador, limpiarBorrador } from './borradorHorario';
 import { useSolicitudesPendientesCount } from './useSolicitudesPendientesCount';
 import { DIA_DESCANSO_A_INDICE, labelDiaDescanso } from './coverage';
 import { requiereSolicitud } from './turnoValidation';
@@ -43,6 +44,8 @@ export default function HorariosPage() {
   const storeId = user.rol === 'TIENDA' ? user.id_tienda : selectedStoreId;
   const setStoreId = setSelectedStoreId;
   const [pendingChanges, setPendingChanges] = useState({});
+  // Sede+semana a la que pertenece lo que hay en pendingChanges.
+  const [claveCargada, setClaveCargada] = useState(null);
   const [saving, setSaving] = useState(false);
   const [turnoModal, setTurnoModal] = useState({ open: false });
   const [motivoModalOpen, setMotivoModalOpen] = useState(false);
@@ -68,9 +71,25 @@ export default function HorariosPage() {
   const invalidateHorarios = useInvalidateHorarios();
   const { data: solicitudesPendientes, refetch: refetchPendientesCount } = useSolicitudesPendientesCount(isAdminLike);
 
+  // Al entrar a una sede/semana se recupera el borrador que haya quedado sin
+  // guardar, y cada cambio se persiste: cambiar de módulo ya no lo pierde.
   useEffect(() => {
-    setPendingChanges({});
+    const borrador = leerBorrador(storeId, weekStart);
+    setPendingChanges(borrador);
+    setClaveCargada(`${storeId}_${weekStart}`);
+    const cuantos = Object.keys(borrador).length;
+    if (cuantos > 0) {
+      showToast(`Se recuperaron ${cuantos} cambio(s) que dejaste sin guardar.`, 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart, storeId]);
+
+  useEffect(() => {
+    // Recién cambiada la semana, pendingChanges todavía es el de la anterior:
+    // guardarlo acá lo metería en la clave equivocada.
+    if (claveCargada !== `${storeId}_${weekStart}`) return;
+    guardarBorrador(storeId, weekStart, pendingChanges);
+  }, [pendingChanges, claveCargada, storeId, weekStart]);
 
   const empleados = data?.empleados || [];
   const periodo = data?.periodo;
@@ -102,8 +121,23 @@ export default function HorariosPage() {
 
   const discardChanges = () => {
     setPendingChanges({});
+    limpiarBorrador(storeId, weekStart);
     showToast('Cambios descartados.', 'info');
   };
+
+  // Turnos que se verían hoy en la grilla, contando lo que aún no se guarda.
+  // Sirve para no mandar a aprobación una semana en blanco.
+  const hayTurnosEnLaSemana = useMemo(
+    () =>
+      empleados.some((emp) =>
+        weekDates.some((fecha) => {
+          const pendiente = pendingChanges[`${emp.id_empleado}_${fecha}`];
+          const bloques = pendiente ? pendiente.turnos : emp.dias?.[fecha];
+          return Boolean(bloques && bloques.length > 0);
+        })
+      ),
+    [empleados, weekDates, pendingChanges]
+  );
 
   const saveLiveChanges = async () => {
     const cambios = Object.values(pendingChanges);
@@ -113,6 +147,7 @@ export default function HorariosPage() {
       await bulkUpdateHorarios(cambios);
       showToast('¡Horario guardado con éxito!', 'success');
       setPendingChanges({});
+      limpiarBorrador(storeId, weekStart);
       invalidateHorarios(storeId);
     } catch (err) {
       showToast(err.message, 'error');
@@ -175,6 +210,7 @@ export default function HorariosPage() {
       const res = await crearSolicitud(weekStart, storeId, motivo, cambios);
       showToast(res.message || 'Solicitud enviada.', 'success');
       setPendingChanges({});
+      limpiarBorrador(storeId, weekStart);
       setCambiosPropuestos(null);
       setMotivoModalOpen(false);
       setProponerOpen(false);
@@ -187,16 +223,42 @@ export default function HorariosPage() {
   };
 
   const handleEnviarPrimeraVez = async () => {
-    const mensaje = solicitud
-      ? '¿Reenviar el horario de esta semana con los cambios más recientes para aprobación?'
-      : '¿Enviar el horario de esta semana para que un Admin/Supervisor/RRHH lo confirme como oficial?';
-    if (!window.confirm(mensaje)) return;
+    // Se manda lo que está guardado, así que una semana en blanco solo puede
+    // ser un descuido: antes se enviaba vacía sin avisar.
+    if (!hayTurnosEnLaSemana) {
+      showToast('El horario de esta semana está vacío. Carga los turnos antes de enviarlo.', 'error');
+      return;
+    }
+
+    const cambiosSinGuardar = Object.values(pendingChanges);
+    const mensaje = [
+      solicitud
+        ? '¿Reenviar el horario de esta semana con los cambios más recientes para aprobación?'
+        : '¿Enviar el horario de esta semana para que un Admin/Supervisor/RRHH lo confirme como oficial?',
+      cambiosSinGuardar.length > 0
+        ? `Se guardarán primero los ${cambiosSinGuardar.length} cambio(s) que tienes sin guardar.`
+        : null
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    if (!(await confirm(mensaje))) return;
+
+    setSaving(true);
     try {
+      // Guardar antes de enviar: la solicitud se arma con lo que hay en la
+      // base, no con el estado de la pantalla.
+      if (cambiosSinGuardar.length > 0) {
+        await bulkUpdateHorarios(cambiosSinGuardar);
+        setPendingChanges({});
+        limpiarBorrador(storeId, weekStart);
+      }
       const res = await crearSolicitud(weekStart, storeId);
       showToast(res.message || 'Horario enviado.', 'success');
       invalidateHorarios(storeId);
     } catch (err) {
       showToast(err.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -414,6 +476,7 @@ export default function HorariosPage() {
         empNombre={turnoModal.empNombre}
         fecha={turnoModal.fecha}
         initialBlocks={turnoBlocksForModal}
+        empleado={turnoEmpleadoData}
         diaDescansoEmpleado={turnoEmpleadoData?.dia_descanso}
         onClose={() => setTurnoModal({ open: false })}
         onSubmit={handleTurnoSubmit}
