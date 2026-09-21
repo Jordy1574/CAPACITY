@@ -270,7 +270,7 @@ export default function EmployeeModal({ open, employee, tienda, empleados, savin
             <div>
               <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">Código Asesor (Plaza)</label>
               <select value={form.codigo_empleado} onChange={set('codigo_empleado')} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#D81B60]">
-                <option value="">(Sin Código - Días de Prueba)</option>
+                <option value="">(Sin código asignado)</option>
                 {options.map((opt) => (
                   <option key={opt.code} value={opt.code} disabled={opt.isOccupied}>
                     {opt.code} {opt.isEncargada ? '(Encargada)' : ''} {opt.isOccupied ? '- (Ocupado)' : ''}

@@ -143,7 +143,7 @@ function pintarHoja(hoja, tienda, semanaInicio, datos) {
 
     const fila = hoja.addRow([
       emp.nombre_completo,
-      emp.codigo_empleado || 'EN PRUEBA',
+      emp.codigo_empleado || 'SIN CODIGO',
       emp.regimen || 'FT',
       ...emp.dias.map(textoTurno),
       Number(horas.toFixed(2)),

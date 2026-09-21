@@ -85,7 +85,7 @@ export default function CapacityTable({ data, onEditEmployee }) {
                         {emp.codigo_empleado}
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold rounded-lg">EN PRUEBA</span>
+                      <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold rounded-lg">SIN CÓDIGO</span>
                     )}
                   </td>
                   <td className="p-3 border-b border-gray-100 text-gray-700 text-xs font-semibold">{emp.puesto || 'ASESOR DE VENTAS'}</td>

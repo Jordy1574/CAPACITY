@@ -59,8 +59,10 @@ async function getCapacityMatrix(user, mesInput, queryIdTienda) {
       resumen: {
         total_empleados: 0,
         promedio_capacity: 0,
-        asistencias_completas: 0,
-        dias_trabajados: 0
+        colaboradores_activos: 0,
+        dias_del_mes: getDaysInMonth(mes).length,
+        dias_trabajados: 0,
+        dias_con_registro: 0
       }
     };
   }
@@ -68,22 +70,29 @@ async function getCapacityMatrix(user, mesInput, queryIdTienda) {
   const empIds = empleados.map(e => e.id_empleado);
   const capacityRecords = await capacityRepository.findRecordsForEmpleados(mes, empIds);
 
+  const situacionDe = {};
+  empleados.forEach(e => { situacionDe[e.id_empleado] = e.situacion; });
+
   const capacityMap = {};
-  let totalValor = 0;
-  let asistenciasCompletasCount = 0;
-  let totalDiasConRegistro = 0;
+  let diasTrabajados = 0;
+  let diasConRegistro = 0;
 
   capacityRecords.forEach(rec => {
     if (!capacityMap[rec.id_empleado]) {
       capacityMap[rec.id_empleado] = {};
     }
-    const val = parseFloat(rec.valor);
-    const fechaKey = String(rec.fecha).substring(0, 10);
-    capacityMap[rec.id_empleado][fechaKey] = val;
+    // Un día trabajado vale 1 sea PT o FT; la dotación (0.5 / 1) es otra
+    // columna. Los meses cargados con la lógica anterior guardaron el día
+    // como la dotación, así que un 0.5 es un día trabajado de un part time.
+    const trabajo = parseFloat(rec.valor) > 0 ? 1 : 0;
+    capacityMap[rec.id_empleado][String(rec.fecha).substring(0, 10)] = trabajo;
 
-    totalValor += val;
-    if (val === 1.0) asistenciasCompletasCount++;
-    if (val > 0) totalDiasConRegistro++;
+    // Solo cuentan los que comisionan: un INACTIVO o un NO_COMISIONA no suma
+    // ni al numerador ni al denominador del promedio.
+    if (situacionDe[rec.id_empleado] === 'ACTIVO') {
+      diasConRegistro += 1;
+      diasTrabajados += trabajo;
+    }
   });
 
   const daysInMonth = getDaysInMonth(mes);
@@ -95,8 +104,10 @@ async function getCapacityMatrix(user, mesInput, queryIdTienda) {
     return { ...emp, dotacion: dotacionDe(emp.regimen), dias: diasObj };
   });
 
-  const totalPosible = empleados.filter(e => e.situacion === 'ACTIVO').length * daysInMonth.length;
-  const promedioCapacity = totalPosible > 0 ? parseFloat(((totalValor / totalPosible) * 100).toFixed(1)) : 0;
+  // Denominador: cada colaborador que comisiona por cada día del mes.
+  const activos = empleados.filter(e => e.situacion === 'ACTIVO').length;
+  const totalPosible = activos * daysInMonth.length;
+  const promedioCapacity = totalPosible > 0 ? parseFloat(((diasTrabajados / totalPosible) * 100).toFixed(1)) : 0;
 
   return {
     tienda,
@@ -106,8 +117,12 @@ async function getCapacityMatrix(user, mesInput, queryIdTienda) {
     resumen: {
       total_empleados: empleados.length,
       promedio_capacity: promedioCapacity,
-      asistencias_completas: asistenciasCompletasCount,
-      dias_trabajados: totalDiasConRegistro
+      // Con qué se calculó el porcentaje, para que el número sea auditable
+      // desde la pantalla y no haya que deducirlo.
+      colaboradores_activos: activos,
+      dias_del_mes: daysInMonth.length,
+      dias_trabajados: diasTrabajados,
+      dias_con_registro: diasConRegistro
     }
   };
 }
@@ -367,7 +382,7 @@ async function exportCapacity(mesInput, idTiendaInput) {
     return {
       fecha,
       dni: r.dni,
-      codigo_empleado: r.codigo_empleado || 'EN PRUEBA',
+      codigo_empleado: r.codigo_empleado || 'SIN CODIGO',
       nombre_empleado: r.nombre_empleado,
       puesto: r.puesto,
       regimen: r.regimen,
@@ -502,7 +517,7 @@ async function exportCapacityCsv(user, mesInput, queryIdTienda) {
       data.tienda.codigo_almacen || '',
       data.tienda.nombre_tienda,
       emp.dni,
-      emp.codigo_empleado || 'EN PRUEBA',
+      emp.codigo_empleado || 'SIN CODIGO',
       emp.nombre_completo,
       emp.puesto || '',
       emp.regimen || '',
